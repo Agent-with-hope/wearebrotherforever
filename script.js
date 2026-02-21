@@ -6,55 +6,61 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区 (可在此处修改照片)
+// 🔴 用户核心配置区
 // ==========================================
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
     particleCount: isMobile ? 6000 : 15000, 
     horseScale: 0.14, 
-    photoCount: 30, // 照片墙最多显示的数量
+    photoCount: 30,
     bloomStrength: isMobile ? 1.5 : 2.2, 
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
     horseImageUrl: 'http://googleusercontent.com/image_generation_content/0',
     
-    // 自定义照片墙图片
     galleryImages: [
-        "/images/IMG_20220723_151111.jpg",
-        "/images/IMG_20220723_161917.jpg",
-        "/images/IMG_20220723_170924.jpg",
-        "/images/IMG_20220723_174018.jpg",
-        "/images/IMG_20220723_184904.jpg",
-        "/images/IMG_20220724_151129.jpg",
-        "/images/IMG_20220724_151404.jpg",
-        "/images/IMG_20220724_152254.jpg",
-        "/images/IMG_20220724_153041.jpg",
-        "/images/IMG_20220724_154313.jpg",
-        "/images/IMG_20220724_154745.jpg",
-        "/images/IMG_20220724_154904.jpg",
-        "/images/IMG_20220725_150737.jpg",
-        "/images/IMG_20220725_152033.jpg",
-        "/images/IMG_20220725_153234.jpg",
-        "/images/IMG_20220725_163419.jpg"
+        "./images/IMG_20220723_151111.jpg",
+        "./images/IMG_20220723_161917.jpg",
+        "./images/IMG_20220723_170924.jpg",
+        "./images/IMG_20220723_174018.jpg",
+        "./images/IMG_20220723_184904.jpg",
+        "./images/IMG_20220724_151129.jpg",
+        "./images/IMG_20220724_151404.jpg",
+        "./images/IMG_20220724_152254.jpg",
+        "./images/IMG_20220724_153041.jpg",
+        "./images/IMG_20220724_154313.jpg",
+        "./images/IMG_20220724_154745.jpg",
+        "./images/IMG_20220724_154904.jpg",
+        "./images/IMG_20220725_150737.jpg",
+        "./images/IMG_20220725_152033.jpg",
+        "./images/IMG_20220725_153234.jpg",
+        "./images/IMG_20220725_163419.jpg"
     ] 
 };
 
 // ==========================================
-// 音效系统 (已清理隐形乱码字符)
+// 音效系统 (已深度清理隐藏乱码)
 // ==========================================
 class EtherealSynth {
-    constructor() { this.ctx = null; this.isMuted = true; }
+    constructor() {
+        this.ctx = null;
+        this.isMuted = true;
+    }
     
     init() { 
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); 
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
         this.isMuted = false; 
-        if(this.ctx.state === 'suspended') this.ctx.resume(); 
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
     }
     
     toggleMute() { 
-        if(!this.ctx) this.init(); 
+        if (!this.ctx) this.init(); 
         this.isMuted = !this.isMuted; 
         return this.isMuted; 
     }
@@ -119,7 +125,6 @@ let focusedPhoto = null, isUserInteracting = false;
 
 const synth = new EtherealSynth();
 
-// 获取 DOM
 const statusPill = document.getElementById('status-pill');
 const statusText = document.getElementById('status-text');
 const gestureIcon = document.getElementById('gesture-icon');
@@ -132,7 +137,6 @@ const manualBtn = document.getElementById('manual-btn');
 const audioBtn = document.getElementById('audio-btn');
 const gestureGuide = document.getElementById('gesture-guide');
 
-// AI Chat DOM
 const aiBtn = document.getElementById('ai-btn');
 const chatModal = document.getElementById('ai-chat-modal');
 const closeChatBtn = document.getElementById('close-chat-btn');
@@ -179,7 +183,6 @@ function initThree() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
     
-    // 电影级色调映射，限制全局曝光
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
     
@@ -360,7 +363,7 @@ function createPhotos() {
     
     const loader = new THREE.TextureLoader(); 
     
-    // 🟢 解决跨域问题的关键配置，防止被 Cloudflare/浏览器拦截
+    // 关键修复：允许跨域加载图片
     loader.setCrossOrigin('anonymous'); 
 
     const phi = Math.PI * (3 - Math.sqrt(5)); 
@@ -380,7 +383,6 @@ function createPhotos() {
         }
 
         loader.load(imgUrl, (tex) => {
-            // 定义色彩空间并压暗材质底色，抵消全局 Bloom 的过曝效应
             tex.colorSpace = THREE.SRGBColorSpace; 
             const photoMaterial = new THREE.MeshBasicMaterial({ 
                 map: tex, 
@@ -416,7 +418,7 @@ function setupInteraction() {
         if (!isMuted) { 
             audioBtn.innerText = "🔊 音效已开"; 
             audioBtn.classList.add('active'); 
-            if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); 
+            if (synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); 
         } else { 
             audioBtn.innerText = "🔇 音效已关"; 
             audioBtn.classList.remove('active'); 
@@ -453,7 +455,7 @@ function toggleManualState() {
 }
 
 function onClick() {
-    if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume();
+    if (synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume();
     if (appState !== 'GALLERY') return;
     raycaster.setFromCamera(mouse, camera); 
     const intersects = raycaster.intersectObjects(photos);
@@ -691,7 +693,6 @@ function setupAI() {
     });
 }
 
-// 调用你在 Cloudflare Pages Functions 中设置的后端代理
 async function callZhipuAI(prompt) {
     try {
         const response = await fetch('/api/chat', {
@@ -752,5 +753,4 @@ function addMessageToChat(content, className, id = null, isHTML = false) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// 启动应用
 init();
