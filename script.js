@@ -18,7 +18,7 @@ const CONFIG = {
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
-    // 留空此项，强制引擎调用底层的多浏览器兼容 Emoji 渲染逻辑
+    // 留空此项，强制启用底层的 SVG 黑科技渲染逻辑
     horseImageUrl: '',
     
     galleryImages: [
@@ -210,18 +210,18 @@ function initPostProcessing() {
     composer.addPass(bloomPass);
 }
 
+// 🟢 改造为支持异步加载 SVG 图像的模式
 function generateHorseData() {
     return new Promise((resolve) => {
         if (!CONFIG.horseImageUrl) {
-            generateFallbackHorse();
-            resolve();
+            generateFallbackHorse(resolve);
             return;
         }
         const img = new Image(); 
         img.crossOrigin = "Anonymous"; 
         img.src = CONFIG.horseImageUrl;
         img.onload = () => { processImageToPoints(img); resolve(); };
-        img.onerror = () => { generateFallbackHorse(); resolve(); };
+        img.onerror = () => { generateFallbackHorse(resolve); };
     });
 }
 
@@ -258,37 +258,51 @@ function processImageToPoints(img) {
     fillPoints(tempPoints, tempAura);
 }
 
-function generateFallbackHorse() {
+function generateFallbackHorse(resolveCallback) {
     const canvas = document.createElement('canvas'); 
     const ctx = canvas.getContext('2d');
     const size = 400; 
     canvas.width = size; 
     canvas.height = size;
     
-    // 🟢 终极兼容方案：显式声明操作系统的系统级 Emoji 字体，彻底终结 Edge 的“大方块”现象
-    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'; 
-    ctx.textAlign = 'center'; 
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🐎', size / 2, size / 2 + 20);
+    // 🚀 核心黑科技：用 SVG 包装 Emoji。这会调用浏览器的主渲染引擎，彻底绕过 Canvas 画方块的 BUG
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+        <text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">🐎</text>
+    </svg>`;
     
-    const imgData = ctx.getImageData(0, 0, size, size).data;
-    const tempPoints = []; 
-    const tempAura = []; 
-    const step = isMobile ? 3 : 2;
+    const img = new Image();
+    // 将 SVG 转换为浏览器可以直接读取的图片链接
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     
-    for (let y = 0; y < size; y += step) {
-        for (let x = 0; x < size; x += step) {
-            // 完美无视浏览器颜色渲染差异，只抓取轮廓透明度
-            if (imgData[(y * size + x) * 4 + 3] > 50) {
-                 const px = (x - size / 2) * CONFIG.horseScale; 
-                 const py = -(y - size / 2) * CONFIG.horseScale; 
-                 const pz = (Math.random() - 0.5) * 6; // 保留原始生动的动态厚度
-                 tempPoints.push(new THREE.Vector3(px, py, pz));
-                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+    img.onload = () => {
+        // 清空画布并将完美渲染的 SVG 画上去
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; 
+        const tempAura = []; 
+        const step = isMobile ? 3 : 2;
+        
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                // 抓取 SVG 生成的图片的透明度轮廓
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; 
+                     const py = -(y - size / 2) * CONFIG.horseScale; 
+                     const pz = (Math.random() - 0.5) * 6; // 保留极具张力的动态粒子厚度
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                }
             }
         }
-    }
-    fillPoints(tempPoints, tempAura);
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
+    };
+    
+    img.onerror = () => {
+        if (resolveCallback) resolveCallback(); // 异常保护
+    };
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -324,13 +338,13 @@ function createParticles() {
         
         if (i < bodyCount) {
             const type = Math.random();
-            // 采用专属的新春质感配色，拒绝单一色调
-            if (type > 0.6) colorObj.setHex(0xFFD700);      // 金色
-            else if (type > 0.3) colorObj.setHex(0xFF2200); // 新春红
-            else colorObj.setHex(0xFF6600);                 // 活力橙
+            // 新春主题配色：金、红、橙交织
+            if (type > 0.6) colorObj.setHex(0xFFD700); 
+            else if (type > 0.3) colorObj.setHex(0xFF2200);
+            else colorObj.setHex(0xFF6600);
             sizes.push(Math.random() * 0.5 + 0.1);
         } else { 
-            colorObj.setHex(0xFFD700); // 环绕光晕保持金色
+            colorObj.setHex(0xFFD700); 
             sizes.push(Math.random() * 0.3 + 0.05); 
         }
         colors.push(colorObj.r, colorObj.g, colorObj.b);
