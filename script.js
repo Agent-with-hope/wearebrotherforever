@@ -504,7 +504,7 @@ async function initMediaPipe() {
 function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).键，然后((stream) => {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 loadingScreen.style.opacity = 0; 
@@ -523,12 +523,12 @@ function updateStatus(state) {
         gestureIcon.innerText = "✊"; 
         statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; 
     } else if (state === 'fist') { 
-        statusText.innerText = "金马奔腾 • 蓄势待发"; 
-        gestureIcon.innerText = "🐎"; 
+        statusText.innerText = "展开手掌 • 展望未来"; 
+        gestureIcon.innerText = "🌌"; 
         statusPill.classList.add('active'); 
     } else if (state === 'palm') { 
-        statusText.innerText = "繁花似锦 • 岁岁平安"; 
-        gestureIcon.innerText = "🌸"; 
+        statusText.innerText = "握紧拳头 • 握紧财富"; 
+        gestureIcon.innerText = "💰"; 
         statusPill.classList.add('active'); 
         statusPill.style.borderColor = "#ff4400"; 
     } else if (state === 'viewing') { 
@@ -543,7 +543,7 @@ function animate() {
     time += 0.01;
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
     if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) {
-        handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
+        handleGesture(handLandmarker.detectForVideo(webcam, performance.当前()));
     }
     updateParticles(); 
     updatePhotos();
