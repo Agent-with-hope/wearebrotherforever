@@ -6,11 +6,12 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区
+// 🔴 用户核心配置区 (已自动绑定你的专属 GitHub 仓库)
 // ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 
+// 自动拼接 jsDelivr 的 Fastly 亚洲加速节点路径 (假设代码在 main 分支)
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -23,8 +24,10 @@ const CONFIG = {
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
+    // 留空以启用兼容 Edge 和 Chrome 的完美 SVG 粒子抓取逻辑
     horseImageUrl: '',
     
+    // 🚀 图片已全部套用 CDN 加速前缀！
     galleryImages: [
         CDN_PREFIX + "IMG_20220723_151111.jpg",
         CDN_PREFIX + "IMG_20220723_161917.jpg",
@@ -216,6 +219,7 @@ function generateFallbackHorse(resolveCallback) {
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
     const size = 400; canvas.width = size; canvas.height = size;
     
+    // 采用 SVG 包装 Emoji 技术，完美兼容 Edge 和 Chrome 的渲染，告别“大方块”
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
         <text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">🐎</text>
     </svg>`;
@@ -290,11 +294,7 @@ function getSprite() {
 }
 
 function createPhotos() {
-    photoGroup = new THREE.Group(); 
-    // 🚀 核心优化：让照片组从一开始就保持可见，强制 Three.js 提前将纹理上传至 GPU 显存
-    photoGroup.visible = true; 
-    scene.add(photoGroup);
-    
+    photoGroup = new THREE.Group(); photoGroup.visible = false; scene.add(photoGroup);
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
     for (let i = 0; i < CONFIG.photoCount; i++) {
@@ -317,9 +317,6 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            // 🚀 核心优化：初始缩放值设为肉眼不可见的极小值 0.0001，欺骗 GPU 提前分配显存
-            mesh.scale.set(0.0001, 0.0001, 0.0001);
-            
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
             mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
         });
@@ -370,12 +367,14 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// AI 视觉初始化
+// 🚀 核心提速优化
 async function initMediaPipe() {
+    // 将 NPM 下载节点更换为国内友好的 fastly 节点
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, { 
         baseOptions: { 
+            // 采用 jsDelivr 加速拉取你 GitHub 仓库里的手势模型文件
             modelAssetPath: `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
             delegate: "GPU" 
         }, 
@@ -392,6 +391,7 @@ function startWebcam() {
             webcam.srcObject = stream;
             
             webcam.addEventListener('loadeddata', () => { 
+                // 🚀 无感预热（Warm-up）技术，消除初次张手的明显卡顿
                 if (handLandmarker) {
                     handLandmarker.detectForVideo(webcam, performance.now());
                 }
@@ -486,12 +486,8 @@ function updatePhotos() {
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1); mesh.scale.set(newScale, newScale, newScale);
         });
     } else {
-        // 🚀 核心优化：这里不再彻底隐藏 mesh 和 group，而是使其保持微小状态，常驻内存！
-        photos.forEach(mesh => { 
-            mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
-            const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.0001, 0.1); 
-            mesh.scale.set(newScale, newScale, newScale); 
-        });
+        photos.forEach(mesh => { mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); mesh.scale.lerp(new THREE.Vector3(0,0,0), 0.1); });
+        if (photos.length > 0 && photos[0].scale.x < 0.01) photoGroup.visible = false;
     }
 }
 
