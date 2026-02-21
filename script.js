@@ -22,22 +22,22 @@ const CONFIG = {
     
     // 自定义照片墙图片
     galleryImages: [
-        "./images/IMG_20220723_151111.jpg",
-        "./images/IMG_20220723_161917.jpg",
-        "./images/IMG_20220723_170924.jpg",
-        "./images/IMG_20220723_174018.jpg",
-        "./images/IMG_20220723_184904.jpg",
-        "./images/IMG_20220724_151129.jpg",
-        "./images/IMG_20220724_151404.jpg",
-        "./images/IMG_20220724_152254.jpg",
-        "./images/IMG_20220724_153041.jpg",
-        "./images/IMG_20220724_154313.jpg",
-        "./images/IMG_20220724_154745.jpg",
-        "./images/IMG_20220724_154904.jpg",
-        "./images/IMG_20220725_150737.jpg",
-        "./images/IMG_20220725_152033.jpg",
-        "./images/IMG_20220725_153234.jpg",
-        "./images/IMG_20220725_163419.jpg"
+        "/images/IMG_20220723_151111.jpg",
+        "/images/IMG_20220723_161917.jpg",
+        "/images/IMG_20220723_170924.jpg",
+        "/images/IMG_20220723_174018.jpg",
+        "/images/IMG_20220723_184904.jpg",
+        "/images/IMG_20220724_151129.jpg",
+        "/images/IMG_20220724_151404.jpg",
+        "/images/IMG_20220724_152254.jpg",
+        "/images/IMG_20220724_153041.jpg",
+        "/images/IMG_20220724_154313.jpg",
+        "/images/IMG_20220724_154745.jpg",
+        "/images/IMG_20220724_154904.jpg",
+        "/images/IMG_20220725_150737.jpg",
+        "/images/IMG_20220725_152033.jpg",
+        "/images/IMG_20220725_153234.jpg",
+        "/images/IMG_20220725_163419.jpg"
     ] 
 };
 
