@@ -18,7 +18,8 @@ const CONFIG = {
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
-    horseImageUrl: 'http://googleusercontent.com/image_generation_content/0',
+    // 换成安全的 Base64 透明图，彻底消除 GitHub / Google 的跨域报错
+    horseImageUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
     
     galleryImages: [
         "./images/IMG_20220723_151111.jpg",
@@ -41,7 +42,7 @@ const CONFIG = {
 };
 
 // ==========================================
-// 音效系统 (已深度清理隐藏乱码)
+// 音效系统
 // ==========================================
 class EtherealSynth {
     constructor() {
@@ -362,8 +363,6 @@ function createPhotos() {
     scene.add(photoGroup);
     
     const loader = new THREE.TextureLoader(); 
-    
-    // 关键修复：允许跨域加载图片
     loader.setCrossOrigin('anonymous'); 
 
     const phi = Math.PI * (3 - Math.sqrt(5)); 
@@ -504,7 +503,7 @@ async function initMediaPipe() {
 function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).键，然后((stream) => {
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 loadingScreen.style.opacity = 0; 
@@ -523,12 +522,12 @@ function updateStatus(state) {
         gestureIcon.innerText = "✊"; 
         statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; 
     } else if (state === 'fist') { 
-        statusText.innerText = "展开手掌 • 展望未来"; 
-        gestureIcon.innerText = "🌌"; 
+        statusText.innerText = "金马奔腾 • 蓄势待发"; 
+        gestureIcon.innerText = "🐎"; 
         statusPill.classList.add('active'); 
     } else if (state === 'palm') { 
-        statusText.innerText = "握紧拳头 • 握紧财富"; 
-        gestureIcon.innerText = "💰"; 
+        statusText.innerText = "繁花似锦 • 岁岁平安"; 
+        gestureIcon.innerText = "🌸"; 
         statusPill.classList.add('active'); 
         statusPill.style.borderColor = "#ff4400"; 
     } else if (state === 'viewing') { 
@@ -543,7 +542,7 @@ function animate() {
     time += 0.01;
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
     if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) {
-        handleGesture(handLandmarker.detectForVideo(webcam, performance.当前()));
+        handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
     }
     updateParticles(); 
     updatePhotos();
