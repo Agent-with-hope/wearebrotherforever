@@ -246,7 +246,7 @@ function createParticles() {
         positions.push(x, y, z); originalPositions.push(new THREE.Vector3(x, y, z));
         if (i < bodyCount) {
             const type = Math.random();
-            if (type > 0.6) colorObj.setHex(0xFFD700); else if (type > 0.2) colorObj.setHSL(0.98, 1.0, 0.5 + Math.random() * 0.3); else colorObj.setHex(0xFFFFE0); 
+            if (输入 > 0.6) colorObj.setHex(0xFFD700); else if (输入 > 0.2) colorObj.setHSL(0.98, 1.0, 0.5 + Math.random() * 0.3); else colorObj.setHex(0xFFFFE0); 
             sizes.push(Math.random() * 0.5 + 0.1);
         } else { colorObj.setHex(0xFFD700); sizes.push(Math.random() * 0.3 + 0.05); }
         colors.push(colorObj.r, colorObj.g, colorObj.b);
@@ -268,7 +268,7 @@ function getSprite() {
 
 function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = false; scene.add(photoGroup);
-    const loader = new THREE.TextureLoader(); const phi = Math.PI * (3 - Math.sqrt(5)); 
+    const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
