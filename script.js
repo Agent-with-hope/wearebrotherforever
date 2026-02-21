@@ -5,9 +5,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-// ==========================================
-// 🔴 用户核心配置区 (可在此处修改照片)
-// ==========================================
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
@@ -20,31 +17,28 @@ const CONFIG = {
     
     horseImageUrl: 'http://googleusercontent.com/image_generation_content/0',
     
-    // 👇 自定义照片墙图片 (填入你朋友的照片) 👇
-    // 部署到 Cloudflare 时，建议填入绝对 URL，或者相对路径如: ['./images/pic1.jpg', './images/pic2.jpg']
     galleryImages: [
-        "./北京照片墙/IMG_20220723_151111.jpg",
-        "./北京照片墙/IMG_20220723_161917.jpg",
-        "./北京照片墙/IMG_20220723_170924.jpg",
-        "./北京照片墙/IMG_20220723_174018.jpg",
-        "./北京照片墙/IMG_20220723_184904.jpg",
-        "./北京照片墙/IMG_20220724_151129.jpg",
-        "./北京照片墙/IMG_20220724_151404.jpg",
-        "./北京照片墙/IMG_20220724_152254.jpg",
-        "./北京照片墙/IMG_20220724_153041.jpg",
-        "./北京照片墙/IMG_20220724_154313.jpg",
-        "./北京照片墙/IMG_20220724_154745.jpg",
-        "./北京照片墙/IMG_20220724_154904.jpg",
-        "./北京照片墙/IMG_20220725_150737.jpg",
-        "./北京照片墙/IMG_20220725_152033.jpg",
-        "./北京照片墙/IMG_20220725_153234.jpg",
-        "./北京照片墙/IMG_20220725_163419.jpg",
+        "./images/IMG_20220723_151111.jpg",
+        "./images/IMG_20220723_161917.jpg",
+        "./images/IMG_20220723_170924.jpg",
+        "./images/IMG_20220723_174018.jpg",
+        "./images/IMG_20220723_184904.jpg",
+        "./images/IMG_20220724_151129.jpg",
+        "./images/IMG_20220724_151404.jpg",
+        "./images/IMG_20220724_152254.jpg",
+        "./images/IMG_20220724_153041.jpg",
+        "./images/IMG_20220724_154313.jpg",
+        "./images/IMG_20220724_154745.jpg",
+        "./images/IMG_20220724_154904.jpg",
+        "./images/IMG_20220725_150737.jpg",
+        "./images/IMG_20220725_152033.jpg",
+        "./images/IMG_20220725_153234.jpg",
+        "./images/IMG_20220725_163419.jpg",
     ] 
 };
 
-// ==========================================
+
 // 音效系统
-// ==========================================
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
     init() { 
@@ -77,13 +71,13 @@ class EtherealSynth {
         osc2.connect(gain2); gain2.connect(this.ctx.destination);
         osc2.type = 'sine'; osc2.frequency.setValueAtTime(800, this.ctx.currentTime); osc2.frequency.exponentialRampToValueAtTime(2000, this.ctx.currentTime + 0.2);
         gain2.gain.setValueAtTime(0.2, this.ctx.currentTime); gain2.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 1.0);
-        osc2.start(); osc2.stop(this.ctx.currentTime + 1.0);
+        osc2。start(); osc2.stop(this.ctx.currentTime + 1.0);
     }
 }
 
-// ==========================================
+
 // 全局变量与 DOM
-// ==========================================
+
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
 let targetBloomStrength = CONFIG.bloomStrength; 
@@ -140,7 +134,7 @@ function fallbackToManual(msg) {
     loadingText.innerText = msg || "请使用手动模式";
     statusText.innerText = "点击按钮开始";
     manualBtn.classList.add('active');
-    manualBtn.innerText = "👆 点击此处开始";
+    manualBtn。innerText = "👆 点击此处开始";
     setTimeout(() => loadingScreen.remove(), 1000);
     hideGuide();
 }
@@ -157,7 +151,7 @@ function initThree() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
     
     // 🎨 核心修复：使用电影级色调映射，限制全局曝光，防止照片过曝泛白
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer。toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
     
     container.appendChild(renderer.domElement);
@@ -450,9 +444,9 @@ function updatePhotos() {
 
 function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
-// ==========================================
+
 // AI 金融顾问功能 (接入后端安全代理)
-// ==========================================
+
 function setupAI() {
     aiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -527,7 +521,7 @@ function addMessageToChat(content, className, id = null, isHTML = false) {
         msgDiv.textContent = content;
     }
 
-    chatMessages.appendChild(msgDiv);
+    chatMessages。appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
