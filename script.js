@@ -268,7 +268,7 @@ function getSprite() {
 
 function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = false; scene.add(photoGroup);
-    const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
+    const loader = new THREE.TextureLoader(); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
