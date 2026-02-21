@@ -18,7 +18,7 @@ const CONFIG = {
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
-    // 留空以强制启用完美兼容 Edge 和 Chrome 的 Alpha 粒子抓取逻辑
+    // 留空此项，强制引擎调用底层的多浏览器兼容 Emoji 渲染逻辑
     horseImageUrl: '',
     
     galleryImages: [
@@ -265,8 +265,8 @@ function generateFallbackHorse() {
     canvas.width = size; 
     canvas.height = size;
     
-    // 背景保持完全透明
-    ctx.font = 'bold 260px "Microsoft YaHei", sans-serif'; 
+    // 🟢 终极兼容方案：显式声明操作系统的系统级 Emoji 字体，彻底终结 Edge 的“大方块”现象
+    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'; 
     ctx.textAlign = 'center'; 
     ctx.textBaseline = 'middle';
     ctx.fillText('🐎', size / 2, size / 2 + 20);
@@ -278,11 +278,11 @@ function generateFallbackHorse() {
     
     for (let y = 0; y < size; y += step) {
         for (let x = 0; x < size; x += step) {
-            // 完美解决浏览器差异：抓取 Alpha 通道（透明度）而非颜色通道
+            // 完美无视浏览器颜色渲染差异，只抓取轮廓透明度
             if (imgData[(y * size + x) * 4 + 3] > 50) {
                  const px = (x - size / 2) * CONFIG.horseScale; 
                  const py = -(y - size / 2) * CONFIG.horseScale; 
-                 const pz = (Math.random() - 0.5) * 6;
+                 const pz = (Math.random() - 0.5) * 6; // 保留原始生动的动态厚度
                  tempPoints.push(new THREE.Vector3(px, py, pz));
                  if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
             }
@@ -324,13 +324,13 @@ function createParticles() {
         
         if (i < bodyCount) {
             const type = Math.random();
-            // 采用喜庆的新春配色：红、金、橙交织
+            // 采用专属的新春质感配色，拒绝单一色调
             if (type > 0.6) colorObj.setHex(0xFFD700);      // 金色
-            else if (type > 0.3) colorObj.setHex(0xFF2200); // 红色
-            else colorObj.setHex(0xFF6600);                 // 橙色
+            else if (type > 0.3) colorObj.setHex(0xFF2200); // 新春红
+            else colorObj.setHex(0xFF6600);                 // 活力橙
             sizes.push(Math.random() * 0.5 + 0.1);
         } else { 
-            colorObj.setHex(0xFFD700); // 星芒光晕保持金色
+            colorObj.setHex(0xFFD700); // 环绕光晕保持金色
             sizes.push(Math.random() * 0.3 + 0.05); 
         }
         colors.push(colorObj.r, colorObj.g, colorObj.b);
@@ -686,7 +686,7 @@ function onWindowResize() {
 // AI 金融顾问功能 (接入后端安全代理)
 // ==========================================
 function setupAI() {
-    aiBtn。addEventListener('click', (e) => {
+    aiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         chatModal.classList.toggle('hidden');
     });
