@@ -18,8 +18,8 @@ const CONFIG = {
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
-    // 换成安全的 Base64 透明图，彻底消除 GitHub / Google 的跨域报错
-    horseImageUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+    // 留空以强制启用完美兼容 Edge 和 Chrome 的 Alpha 粒子抓取逻辑
+    horseImageUrl: '',
     
     galleryImages: [
         "./images/IMG_20220723_151111.jpg",
@@ -212,6 +212,11 @@ function initPostProcessing() {
 
 function generateHorseData() {
     return new Promise((resolve) => {
+        if (!CONFIG.horseImageUrl) {
+            generateFallbackHorse();
+            resolve();
+            return;
+        }
         const img = new Image(); 
         img.crossOrigin = "Anonymous"; 
         img.src = CONFIG.horseImageUrl;
@@ -259,9 +264,8 @@ function generateFallbackHorse() {
     const size = 400; 
     canvas.width = size; 
     canvas.height = size;
-    ctx.fillStyle = '#fff'; 
-    ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = '#000'; 
+    
+    // 背景保持完全透明
     ctx.font = 'bold 260px "Microsoft YaHei", sans-serif'; 
     ctx.textAlign = 'center'; 
     ctx.textBaseline = 'middle';
@@ -271,9 +275,11 @@ function generateFallbackHorse() {
     const tempPoints = []; 
     const tempAura = []; 
     const step = isMobile ? 3 : 2;
+    
     for (let y = 0; y < size; y += step) {
         for (let x = 0; x < size; x += step) {
-            if (imgData[(y * size + x) * 4] < 128) {
+            // 完美解决浏览器差异：抓取 Alpha 通道（透明度）而非颜色通道
+            if (imgData[(y * size + x) * 4 + 3] > 50) {
                  const px = (x - size / 2) * CONFIG.horseScale; 
                  const py = -(y - size / 2) * CONFIG.horseScale; 
                  const pz = (Math.random() - 0.5) * 6;
@@ -308,20 +314,23 @@ function createParticles() {
     const colors = [];
     const colorObj = new THREE.Color(); 
     const bodyCount = Math.floor(CONFIG.particleCount * 0.8);
+    
     for (let i = 0; i < CONFIG.particleCount; i++) {
         const x = (Math.random() - 0.5) * 150; 
         const y = (Math.random() - 0.5) * 150; 
         const z = (Math.random() - 0.5) * 150;
         positions.push(x, y, z); 
         originalPositions.push(new THREE.Vector3(x, y, z));
+        
         if (i < bodyCount) {
             const type = Math.random();
-            if (type > 0.6) colorObj.setHex(0xFFD700); 
-            else if (type > 0.2) colorObj.setHSL(0.98, 1.0, 0.5 + Math.random() * 0.3); 
-            else colorObj.setHex(0xFFFFE0); 
+            // 采用喜庆的新春配色：红、金、橙交织
+            if (type > 0.6) colorObj.setHex(0xFFD700);      // 金色
+            else if (type > 0.3) colorObj.setHex(0xFF2200); // 红色
+            else colorObj.setHex(0xFF6600);                 // 橙色
             sizes.push(Math.random() * 0.5 + 0.1);
         } else { 
-            colorObj.setHex(0xFFD700); 
+            colorObj.setHex(0xFFD700); // 星芒光晕保持金色
             sizes.push(Math.random() * 0.3 + 0.05); 
         }
         colors.push(colorObj.r, colorObj.g, colorObj.b);
@@ -677,7 +686,7 @@ function onWindowResize() {
 // AI 金融顾问功能 (接入后端安全代理)
 // ==========================================
 function setupAI() {
-    aiBtn.addEventListener('click', (e) => {
+    aiBtn。addEventListener('click', (e) => {
         e.stopPropagation();
         chatModal.classList.toggle('hidden');
     });
