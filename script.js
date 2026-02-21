@@ -8,21 +8,19 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 // ==========================================
 // 🔴 用户核心配置区 (可在此处修改照片)
 // ==========================================
-// 注意：API Key 不再写在这里，请在 Cloudflare Pages 后台配置环境变量！
-
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
     particleCount: isMobile ? 6000 : 15000, 
     horseScale: 0.14, 
-    photoCount: 30,
+    photoCount: 30, // 照片墙最多显示的数量
     bloomStrength: isMobile ? 1.5 : 2.2, 
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
     horseImageUrl: 'http://googleusercontent.com/image_generation_content/0',
     
-    // 自定义照片墙图片 (填入你朋友的照片)
+    // 👇 自定义照片墙图片 (填入你朋友的照片) 👇
     // 部署到 Cloudflare 时，建议填入绝对 URL，或者相对路径如: ['./images/pic1.jpg', './images/pic2.jpg']
     galleryImages: [
         // "https://example.com/friend1.jpg",
@@ -143,7 +141,11 @@ function initThree() {
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
-    renderer.toneMapping = THREE.ReinhardToneMapping;
+    
+    // 🎨 核心修复：使用电影级色调映射，限制全局曝光，防止照片过曝泛白
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.85; 
+    
     container.appendChild(renderer.domElement);
     
     controls = new OrbitControls(camera, renderer.domElement);
@@ -271,7 +273,16 @@ function createPhotos() {
         }
 
         loader.load(imgUrl, (tex) => {
-            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true }));
+            // 🎨 核心修复：定义色彩空间并压暗材质底色，抵消全局 Bloom 的过曝效应
+            tex.colorSpace = THREE.SRGBColorSpace; 
+            const photoMaterial = new THREE.MeshBasicMaterial({ 
+                map: tex, 
+                side: THREE.DoubleSide, 
+                transparent: true,
+                color: 0xcccccc 
+            });
+
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
             mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
         });
