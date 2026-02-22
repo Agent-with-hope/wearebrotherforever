@@ -8,13 +8,14 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 
-// 使用国内直连代理，避免 jsdelivr 重定向拦截
-const CDN_PREFIX = `https://mirror.ghproxy.com/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/images/`;
+// 更改点：彻底抛弃不稳定代理，使用 Gcore CDN 镜像，它在国内通常非常丝滑且不随便重定向
+const CDN_PREFIX = `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
+// 更改点：重新排列竞速策略，让国内连通率最高的节点打头阵
 const MODEL_PROXIES = [
-    `https://mirror.ghproxy.com/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
+    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
     `https://jsd.cdn.zzko.cn/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
-    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
+    `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
 ];
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -184,9 +185,9 @@ function initPostProcessing() {
 
 function generateHorseData() {
     return new Promise((resolve) => {
-        // 更新了 Twemoji 的回退防屏蔽链接
+        // 更改点：同样对 Twemoji 资源使用 Gcore CDN 和国内反代
         const fallbacks = [
-            "https://mirror.ghproxy.com/https://raw.githubusercontent.com/jdecked/twemoji/v15.0.3/assets/72x72/1f40e.png",
+            "https://gcore.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png",
             "https://jsd.cdn.zzko.cn/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png"
         ];
         let currentFallback = 0; const img = new Image(); img.crossOrigin = "Anonymous";
