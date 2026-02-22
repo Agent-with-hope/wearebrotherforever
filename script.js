@@ -5,18 +5,16 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-// ==========================================
-// 🔴 用户核心配置区 (保持图片 CDN 加速)
-// ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
-const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
-// 🔴 剔除失效节点：只使用最稳定的官方底层网络进行 30 秒竞速
+// 使用国内直连代理，避免 jsdelivr 重定向拦截
+const CDN_PREFIX = `https://mirror.ghproxy.com/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/images/`;
+
 const MODEL_PROXIES = [
-    `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
-    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
-    `https://cdn.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
+    `https://mirror.ghproxy.com/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
+    `https://jsd.cdn.zzko.cn/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
+    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
 ];
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -43,16 +41,8 @@ const CONFIG = {
 
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
-    init() { 
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); 
-        this.isMuted = false; 
-        if(this.ctx.state === 'suspended') this.ctx.resume(); 
-    }
-    toggleMute() { 
-        if(!this.ctx) this.init(); 
-        this.isMuted = !this.isMuted; 
-        return this.isMuted; 
-    }
+    init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); this.isMuted = false; if(this.ctx.state === 'suspended') this.ctx.resume(); }
+    toggleMute() { if(!this.ctx) this.init(); this.isMuted = !this.isMuted; return this.isMuted; }
     playForm() {
         if (this.isMuted || !this.ctx) return;
         const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
@@ -68,7 +58,6 @@ class EtherealSynth {
         osc.type = 'triangle'; osc.frequency.setValueAtTime(200, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.5);
         gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
         osc.start(); osc.stop(this.ctx.currentTime + 0.5);
-
         const osc2 = this.ctx.createOscillator(); const gain2 = this.ctx.createGain();
         osc2.connect(gain2); gain2.connect(this.ctx.destination);
         osc2.type = 'sine'; osc2.frequency.setValueAtTime(800, this.ctx.currentTime); osc2.frequency.exponentialRampToValueAtTime(2000, this.ctx.currentTime + 0.2);
@@ -79,15 +68,11 @@ class EtherealSynth {
 
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
-let targetBloomStrength = CONFIG.bloomStrength; 
-let appState = 'SCATTERED'; 
+let targetBloomStrength = CONFIG.bloomStrength; let appState = 'SCATTERED'; 
 let time = 0, manualMode = false, fistHoldFrames = 0, hasInteracted = false; 
 const horsePoints = [], auraPoints = [], originalPositions = [], galleryPositions = [], photos = [];
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-let focusedPhoto = null, isUserInteracting = false; 
-
-const synth = new EtherealSynth();
+const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+let focusedPhoto = null, isUserInteracting = false; const synth = new EtherealSynth();
 
 const statusPill = document.getElementById('status-pill');
 const statusText = document.getElementById('status-text');
@@ -98,41 +83,29 @@ const loadingText = document.getElementById('loading-text');
 const dimmerEl = document.getElementById('overlay-dimmer');
 const closeBtn = document.getElementById('close-btn');
 const manualBtn = document.getElementById('manual-btn');
-const audioBtn = document.getElementById('audio-btn');
-const gestureGuide = document.getElementById('gesture-guide');
-const aiBtn = document.getElementById('ai-btn');
-const chatModal = document.getElementById('ai-chat-modal');
-const closeChatBtn = document.getElementById('close-chat-btn');
-const chatInput = document.getElementById('chat-input');
-const sendMsgBtn = document.getElementById('send-msg-btn');
-const chatMessages = document.getElementById('chat-messages');
 
 async function init() {
     initThree();
     initPostProcessing();
     onWindowResize();
-    
     await generateHorseData();
     createParticles();
     createPhotos(); 
     setupInteraction();
     setupAI(); 
-    
     try {
-        // 放宽到 30 秒熔断，给予网络并发请求绝对充足的时间去“赛跑”
         await initMediaPipeWithTimeout(30000); 
     } catch (e) {
-        console.warn("手势引擎加载受阻或超时，已作为次位手段平滑降级至手动模式", e);
+        console.warn("手势引擎加载受阻或超时，已作为次位手段平滑降级至手动模式");
         fallbackToManual("手势网络受阻或未授权，已切换手动模式");
     }
-    
     animate();
 }
 
 async function fetchModelWithRace() {
     const fetchPromises = MODEL_PROXIES.map(url => 
         fetch(url, { cache: "force-cache" }).then(res => {
-            if (!res.ok) throw new Error(`节点响应失败: ${url}`);
+            if (!res.ok) throw new Error(`节点响应失败`);
             return res.blob();
         })
     );
@@ -144,31 +117,17 @@ async function initMediaPipeWithTimeout(timeoutMs) {
     const loadModelTask = new Promise(async (resolve, reject) => {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
-            
             if(statusText) statusText.innerText = "获取视觉引擎...";
             const localFastModelUrl = await fetchModelWithRace();
-
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
-                baseOptions: { 
-                    modelAssetPath: localFastModelUrl,
-                    delegate: "GPU" 
-                }, 
+                baseOptions: { modelAssetPath: localFastModelUrl, delegate: "GPU" }, 
                 runningMode: "VIDEO", numHands: 1 
             });
             resolve();
-        } catch(err) {
-            reject(err);
-        }
+        } catch(err) { reject(err); }
     });
-
-    const timeoutTask = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("网络拉取核心文件超时")), timeoutMs)
-    );
-
-    // 纯网络加载阶段限制 30 秒
+    const timeoutTask = new Promise((_, reject) => setTimeout(() => reject(new Error("网络拉取核心文件超时")), timeoutMs));
     await Promise.race([loadModelTask, timeoutTask]);
-
-    // 调用摄像头权限，此时无时间限制，无限期等用户授权
     await startWebcam();
 }
 
@@ -176,63 +135,43 @@ function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
         if(!webcam) return reject(new Error("找不到摄像头元素"));
-        
         if(loadingText) loadingText.innerHTML = "视觉神经已连接<br><span style='font-size:12px;color:#888;'>(请在浏览器弹窗中【允许】使用摄像头)</span>";
         if(statusText) statusText.innerText = "请在弹窗中允许摄像头";
-
         navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } })
         .then((stream) => {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 if (handLandmarker) handLandmarker.detectForVideo(webcam, performance.now());
                 if(loadingScreen) loadingScreen.style.display = 'none'; 
-                updateStatus("scattered"); 
-                resolve(); 
+                updateStatus("scattered"); resolve(); 
             });
-        })
-        .catch((err) => { 
-            reject(new Error("用户拒绝权限或无可用摄像头")); 
-        });
+        }).catch(() => { reject(new Error("用户拒绝权限或无可用摄像头")); });
     });
 }
 
 function fallbackToManual(msg) {
     if(loadingText) loadingText.innerText = msg;
     if(statusText) statusText.innerText = "免摄模式已开启";
-    if(manualBtn) {
-        manualBtn.classList.add('active');
-        if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
-            manualBtn.innerText = "🖐️ 点击展开相册";
-        } else {
-            manualBtn.innerText = "✊ 凝聚骏马";
-        }
-    }
+    if(manualBtn) { manualBtn.classList.add('active'); manualBtn.innerText = (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') ? "🖐️ 点击展开相册" : "✊ 凝聚骏马"; }
     setTimeout(() => { if(loadingScreen) loadingScreen.style.display = 'none'; }, 1000);
-    hideGuide();
+    const gestureGuide = document.getElementById('gesture-guide');
+    if(gestureGuide) gestureGuide.style.opacity = 0;
 }
 
 function initThree() {
     const container = document.getElementById('canvas-container');
-    scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x1a0505, 0.02); 
+    scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x1a0505, 0.02); 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 0, 45);
-    
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.85; 
-    
-    renderer.domElement.style.display = 'block';
-    renderer.domElement.style.width = '100vw';
-    renderer.domElement.style.height = '100vh';
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.85; 
+    renderer.domElement.style.display = 'block'; renderer.domElement.style.width = '100vw'; renderer.domElement.style.height = '100vh';
     container.appendChild(renderer.domElement);
-    
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true; controls.dampingFactor = 0.05; controls.autoRotate = true; controls.autoRotateSpeed = 1.0; 
-    controls.addEventListener('start', () => isUserInteracting = true);
-    controls.addEventListener('end', () => isUserInteracting = false);
+    controls.addEventListener('start', () => isUserInteracting = true); controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
 }
 
@@ -245,127 +184,69 @@ function initPostProcessing() {
 
 function generateHorseData() {
     return new Promise((resolve) => {
-        if (!CONFIG.horseImageUrl) {
-            generateFallbackHorse(resolve);
-            return;
-        }
-        const img = new Image(); img.crossOrigin = "Anonymous"; img.src = CONFIG.horseImageUrl;
-        img.onload = () => { processImageToPoints(img); resolve(); };
-        img.onerror = () => { generateFallbackHorse(resolve); };
-    });
-}
-
-function processImageToPoints(img) {
-    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-    const size = 400; canvas.width = size; canvas.height = size;
-    const aspect = img.width / img.height; let drawWidth = size; let drawHeight = size / aspect;
-    if (aspect < 1) { drawHeight = size; drawWidth = size * aspect; }
-    ctx.drawImage(img, (size - drawWidth)/2, (size - drawHeight)/2, drawWidth, drawHeight);
-    
-    const imgData = ctx.getImageData(0, 0, size, size).data;
-    const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2; 
-    
-    for (let y = 0; y < size; y += step) {
-        for (let x = 0; x < size; x += step) {
-            if (imgData[(y * size + x) * 4] < 240) { 
-                const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale;
-                const distFromCenterY = Math.abs(y - size/2) / (size/2); const thickness = Math.cos(distFromCenterY * Math.PI / 2) * 8 + 2; 
-                const pz = (Math.random() - 0.5) * thickness; 
-                tempPoints.push(new THREE.Vector3(px, py, pz));
-                if (Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-            }
-        }
-    }
-    fillPoints(tempPoints, tempAura);
-}
-
-function generateFallbackHorse(resolveCallback) {
-    // 🔴 首选项：优先拉取最新的官方开源图片节点，确保 100% 显示 3D 马
-    const fallbacks = [
-        "https://fastly.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png",
-        "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png"
-    ];
-    let currentFallback = 0;
-    
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    
-    img.onload = () => {
-        const canvas = document.createElement('canvas'); 
-        const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
+        // 更新了 Twemoji 的回退防屏蔽链接
+        const fallbacks = [
+            "https://mirror.ghproxy.com/https://raw.githubusercontent.com/jdecked/twemoji/v15.0.3/assets/72x72/1f40e.png",
+            "https://jsd.cdn.zzko.cn/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png"
+        ];
+        let currentFallback = 0; const img = new Image(); img.crossOrigin = "Anonymous";
         
-        ctx.drawImage(img, 40, 40, 320, 320);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; 
-                     const py = -(y - size / 2) * CONFIG.horseScale; 
-                     const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
-            }
-        }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
-
-    img.onerror = () => {
-        currentFallback++;
-        if (currentFallback < fallbacks.length) {
-            img.src = fallbacks[currentFallback];
-        } else {
-            // 🔴 备选项：如果图片全被墙，采用系统原生 Emoji 画马
+        img.onload = () => {
             const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
             const size = 400; canvas.width = size; canvas.height = size;
-            ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
-            
+            ctx.drawImage(img, 40, 40, 320, 320);
             const imgData = ctx.getImageData(0, 0, size, size).data;
             const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-            let hasPixels = false; // 检测是否有画出实际内容（防止 Windows 画不出 Emoji）
-            
             for (let y = 0; y < size; y += step) {
                 for (let x = 0; x < size; x += step) {
                     if (imgData[(y * size + x) * 4 + 3] > 50) {
-                         hasPixels = true;
                          const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
                          tempPoints.push(new THREE.Vector3(px, py, pz));
                          if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
                     }
                 }
             }
-            
-            // 🔴 终极底线备选：如果确实连 Emoji 都画不出来，最后才被迫退化为汉字 '馬'
-            if (!hasPixels) {
-                ctx.clearRect(0, 0, size, size);
-                ctx.font = 'bold 280px sans-serif';
-                ctx.fillText('馬', size / 2, size / 2 + 20);
-                const fallbackData = ctx.getImageData(0, 0, size, size).data;
+            fillPoints(tempPoints, tempAura); resolve();
+        };
+
+        img.onerror = () => {
+            currentFallback++;
+            if (currentFallback < fallbacks.length) { img.src = fallbacks[currentFallback]; } 
+            else {
+                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+                const size = 400; canvas.width = size; canvas.height = size;
+                ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
+                const imgData = ctx.getImageData(0, 0, size, size).data;
+                const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2; let hasPixels = false;
                 for (let y = 0; y < size; y += step) {
                     for (let x = 0; x < size; x += step) {
-                        if (fallbackData[(y * size + x) * 4 + 3] > 50) {
+                        if (imgData[(y * size + x) * 4 + 3] > 50) {
+                             hasPixels = true;
                              const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
                              tempPoints.push(new THREE.Vector3(px, py, pz));
                              if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
                         }
                     }
                 }
+                if (!hasPixels) {
+                    ctx.clearRect(0, 0, size, size); ctx.font = 'bold 280px sans-serif'; ctx.fillText('馬', size / 2, size / 2 + 20);
+                    const fallbackData = ctx.getImageData(0, 0, size, size).data;
+                    for (let y = 0; y < size; y += step) {
+                        for (let x = 0; x < size; x += step) {
+                            if (fallbackData[(y * size + x) * 4 + 3] > 50) {
+                                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                                 tempPoints.push(new THREE.Vector3(px, py, pz));
+                                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                            }
+                        }
+                    }
+                }
+                fillPoints(tempPoints, tempAura); resolve();
             }
-            
-            fillPoints(tempPoints, tempAura);
-            if (resolveCallback) resolveCallback();
-        }
-    };
-    
-    // 开始获取首选的 3D 马图片
-    img.src = fallbacks[0];
+        };
+        img.src = fallbacks[0];
+    });
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -399,7 +280,6 @@ function createParticles() {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-
     particleMaterial = new THREE.PointsMaterial({ size: 0.5, map: getSprite(), vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.95 });
     particles = new THREE.Points(geometry, particleMaterial); scene.add(particles);
 }
@@ -414,17 +294,12 @@ function getSprite() {
 function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = true; scene.add(photoGroup);
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
-    
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
         const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
         galleryPositions.push(new THREE.Vector3(tx, ty, tz));
-        
         let imgUrl = `https://picsum.photos/400/600?random=${i+99}`;
-        if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) {
-            imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
-        }
-
+        if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
         loader.load(imgUrl, (tex) => {
             tex.colorSpace = THREE.SRGBColorSpace; 
             const photoMaterial = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true, color: 0xcccccc });
@@ -441,20 +316,15 @@ function setupInteraction() {
     window.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
     window.addEventListener('pointerup', (e) => {
         const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
-        if (dist < 10) { 
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; onClick();
-        }
+        if (dist < 10) { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; onClick(); }
     });
     window.addEventListener('pointermove', (e) => { 
         if(!isMobile) { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; }
     });
-    
     const closeBtnEl = document.getElementById('close-btn');
     if(closeBtnEl) closeBtnEl.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
-    
     const manualBtnEl = document.getElementById('manual-btn');
     if(manualBtnEl) manualBtnEl.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
-    
     const audioBtnEl = document.getElementById('audio-btn');
     if(audioBtnEl) audioBtnEl.addEventListener('click', (e) => {
         e.stopPropagation(); const isMuted = synth.toggleMute();
@@ -465,11 +335,7 @@ function setupInteraction() {
 
 function hideGuide() { 
     const gestureGuide = document.getElementById('gesture-guide');
-    if (!hasInteracted) { 
-        if(gestureGuide) gestureGuide.style.opacity = 0; 
-        hasInteracted = true; 
-        setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); 
-    } 
+    if (!hasInteracted) { if(gestureGuide) gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } 
 }
 
 function toggleManualState() {
@@ -479,7 +345,6 @@ function toggleManualState() {
     const detectIndicator = document.getElementById('detect-indicator');
     if(detectIndicator) detectIndicator.style.backgroundColor = '#00aaff'; 
     hideGuide(); 
-    
     if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
         appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); 
         if(manualBtnEl) manualBtnEl.innerText = "✊ 凝聚骏马";
@@ -506,6 +371,7 @@ function focusPhoto(mesh) {
     const closeBtnEl = document.getElementById('close-btn');
     if(closeBtnEl) closeBtnEl.classList.add('visible'); targetBloomStrength = 0.1; 
 }
+
 function unfocusPhoto() {
     if (focusedPhoto) { focusedPhoto.userData.isFocused = false; focusedPhoto = null; }
     const dimmerEl = document.getElementById('overlay-dimmer');
@@ -515,9 +381,7 @@ function unfocusPhoto() {
 }
 
 function updateStatus(state) {
-    const statusPill = document.getElementById('status-pill');
-    const statusText = document.getElementById('status-text');
-    const gestureIcon = document.getElementById('gesture-icon');
+    const statusPill = document.getElementById('status-pill'); const statusText = document.getElementById('status-text'); const gestureIcon = document.getElementById('gesture-icon');
     if (!statusPill) return;
     statusPill.classList.remove('active');
     if (state === 'scattered') { if(statusText) statusText.innerText = "握拳 ✊ 召唤金马"; if(gestureIcon) gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
@@ -527,9 +391,7 @@ function updateStatus(state) {
 }
 
 function onWindowResize() { 
-    if(camera && renderer) {
-        camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); 
-    }
+    if(camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
     if(composer) composer.setSize(window.innerWidth, window.innerHeight); 
 }
 
@@ -550,18 +412,12 @@ function handleGesture(results) {
         const lm = results.landmarks[0]; const wrist = lm[0];
         let distSum = 0; [8, 12, 16, 20].forEach(i => { const dx = lm[i].x - wrist.x; const dy = lm[i].y - wrist.y; distSum += Math.sqrt(dx*dx + dy*dy); });
         const avgDist = distSum / 4;
-        
         if (avgDist < 0.28) { 
             fistHoldFrames++;
-            if (fistHoldFrames > 15 && appState !== 'FORMING' && appState !== 'FORMED') {
-                appState = 'FORMING'; synth.playForm(); hideGuide(); updateStatus("fist"); if (focusedPhoto) unfocusPhoto();
-            }
+            if (fistHoldFrames > 15 && appState !== 'FORMING' && appState !== 'FORMED') { appState = 'FORMING'; synth.playForm(); hideGuide(); updateStatus("fist"); if (focusedPhoto) unfocusPhoto(); }
         } else {
             fistHoldFrames = 0;
-            if (avgDist > 0.40 && (appState === 'FORMED' || appState === 'FORMING')) {
-                appState = 'EXPLODING'; synth.playExplode(); hideGuide(); updateStatus("palm"); 
-                setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus("viewing"); } }, 1500);
-            }
+            if (avgDist > 0.40 && (appState === 'FORMED' || appState === 'FORMING')) { appState = 'EXPLODING'; synth.playExplode(); hideGuide(); updateStatus("palm"); setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus("viewing"); } }, 1500); }
         }
     } else { if(detectIndicator) detectIndicator.classList.remove('detected'); fistHoldFrames = 0; }
 }
@@ -624,7 +480,6 @@ function setupAI() {
     const aiBtn = document.getElementById('ai-btn'); const chatModal = document.getElementById('ai-chat-modal');
     const closeChatBtn = document.getElementById('close-chat-btn'); const chatInput = document.getElementById('chat-input');
     const sendMsgBtn = document.getElementById('send-msg-btn');
-    
     if(aiBtn) aiBtn.addEventListener('click', (e) => { e.stopPropagation(); if(chatModal) chatModal.classList.toggle('hidden'); });
     if(closeChatBtn) closeChatBtn.addEventListener('click', () => { if(chatModal) chatModal.classList.add('hidden'); });
     if(sendMsgBtn) sendMsgBtn.addEventListener('click', sendAIMessage);
@@ -633,13 +488,10 @@ function setupAI() {
 
 async function callZhipuAI(prompt) {
     try {
-        const response = await fetch('/api/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompt })
-        });
+        const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompt }) });
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const json = await response.json();
-        if (json.error) throw new Error(json.error);
-        return json.reply;
+        if (json.error) throw new Error(json.error); return json.reply;
     } catch (error) { return "抱歉，财神爷的信号不太好（安全代理请求失败），请稍后再试！"; }
 }
 
