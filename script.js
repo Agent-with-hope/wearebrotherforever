@@ -71,6 +71,12 @@ class EtherealSynth {
         osc.type = 'triangle'; osc.frequency.setValueAtTime(200, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.5);
         gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
         osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+
+        const osc2 = this.ctx.createOscillator(); const gain2 = this.ctx.createGain();
+        osc2.connect(gain2); gain2.connect(this.ctx.destination);
+        osc2.type = 'sine'; osc2.frequency.setValueAtTime(800, this.ctx.currentTime); osc2.frequency.exponentialRampToValueAtTime(2000, this.ctx.currentTime + 0.2);
+        gain2.gain.setValueAtTime(0.2, this.ctx.currentTime); gain2.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 1.0);
+        osc2.start(); osc2.stop(this.ctx.currentTime + 1.0);
     }
 }
 
@@ -121,8 +127,8 @@ async function init() {
         // 🔴 核心极速防御：给 AI 模型加载增加强制熔断器，绝不等待超过 8 秒！
         await initMediaPipeWithTimeout(8000); 
     } catch (e) {
-        console.warn("模型加载超时或被墙，自动切换手动模式");
-        fallbackToManual("相机初始化失败，已切为手动");
+        console.warn("模型加载超时或受阻，自动切换手动模式");
+        fallbackToManual("引擎载入完毕，已切换免摄模式");
     }
     
     // 确保无论发生什么错误，都会启动 3D 渲染循环移除白屏
@@ -133,7 +139,8 @@ async function init() {
 async function initMediaPipeWithTimeout(timeoutMs) {
     const loadTask = new Promise(async (resolve, reject) => {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://npm.elemecdn.com/@mediapipe/tasks-vision@0.10.3/wasm");
+            // WASM 同样使用 Fastly 节点
+            const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
                 baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
                 runningMode: "VIDEO", numHands: 1 
@@ -232,28 +239,56 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    const canvas = document.createElement('canvas'); 
-    const ctx = canvas.getContext('2d');
-    const size = 400; canvas.width = size; canvas.height = size;
+    // 采用 GitHub 源码级托管加载图片，永不 404
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png";
     
-    // 🔴 使用机器码底层生成 Emoji，彻底规避任何长字符串造成的引擎报错和方块图
-    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
-    
-    const imgData = ctx.getImageData(0, 0, size, size).data;
-    const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-    for (let y = 0; y < size; y += step) {
-        for (let x = 0; x < size; x += step) {
-            if (imgData[(y * size + x) * 4 + 3] > 50) {
-                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                 tempPoints.push(new THREE.Vector3(px, py, pz));
-                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+    img.onload = () => {
+        const canvas = document.createElement('canvas'); 
+        const ctx = canvas.getContext('2d');
+        const size = 400; canvas.width = size; canvas.height = size;
+        
+        ctx.drawImage(img, 40, 40, 320, 320);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+        
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; 
+                     const py = -(y - size / 2) * CONFIG.horseScale; 
+                     const pz = (Math.random() - 0.5) * 6;
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                }
             }
         }
-    }
-    fillPoints(tempPoints, tempAura);
-    if (resolveCallback) resolveCallback();
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
+    };
+
+    // 万一断网，绘制文本马进行底层兜底
+    img.onerror = () => {
+        const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+        const size = 400; canvas.width = size; canvas.height = size;
+        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('馬', size / 2, size / 2 + 20);
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                }
+            }
+        }
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
+    };
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -287,6 +322,7 @@ function createParticles() {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+
     particleMaterial = new THREE.PointsMaterial({ size: 0.5, map: getSprite(), vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.95 });
     particles = new THREE.Points(geometry, particleMaterial); scene.add(particles);
 }
@@ -302,7 +338,7 @@ function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = true; scene.add(photoGroup);
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
-    // 图片加载绝对不阻塞进程！任由它在后台跑
+    // 照片静默加载，绝不阻塞！
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
         const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
@@ -337,36 +373,40 @@ function setupInteraction() {
         if(!isMobile) { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; }
     });
     
-    if(closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
-    if(manualBtn) manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
-    if(audioBtn) audioBtn.addEventListener('click', (e) => {
+    const closeBtnEl = document.getElementById('close-btn');
+    if(closeBtnEl) closeBtnEl.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
+    
+    const manualBtnEl = document.getElementById('manual-btn');
+    if(manualBtnEl) manualBtnEl.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
+    
+    const audioBtnEl = document.getElementById('audio-btn');
+    if(audioBtnEl) audioBtnEl.addEventListener('click', (e) => {
         e.stopPropagation(); const isMuted = synth.toggleMute();
-        if (!isMuted) { audioBtn.innerText = "🔊 音效已开"; audioBtn.classList.add('active'); if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); } 
-        else { audioBtn.innerText = "🔇 音效已关"; audioBtn.classList.remove('active'); }
+        if (!isMuted) { audioBtnEl.innerText = "🔊 音效已开"; audioBtnEl.classList.add('active'); if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); } 
+        else { audioBtnEl.innerText = "🔇 音效已关"; audioBtnEl.classList.remove('active'); }
     });
 }
 
 function hideGuide() { 
-    if (!hasInteracted) { 
-        if(gestureGuide) gestureGuide.style.opacity = 0; 
-        hasInteracted = true; 
-        setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); 
-    } 
+    const gestureGuide = document.getElementById('gesture-guide');
+    if (!hasInteracted) { if(gestureGuide) gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } 
 }
 
 function toggleManualState() {
     manualMode = true; 
-    if(manualBtn) manualBtn.classList.add('active'); 
+    const manualBtnEl = document.getElementById('manual-btn');
+    if(manualBtnEl) manualBtnEl.classList.add('active'); 
+    const detectIndicator = document.getElementById('detect-indicator');
     if(detectIndicator) detectIndicator.style.backgroundColor = '#00aaff'; 
     hideGuide(); 
     
     if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
         appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); 
-        if(manualBtn) manualBtn.innerText = "✊ 凝聚骏马";
+        if(manualBtnEl) manualBtnEl.innerText = "✊ 凝聚骏马";
         setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus('viewing'); } }, 1500);
     } else {
         appState = 'FORMING'; synth.playForm(); updateStatus('fist'); if (focusedPhoto) unfocusPhoto(); 
-        if(manualBtn) manualBtn.innerText = "🖐️ 展开相册";
+        if(manualBtnEl) manualBtnEl.innerText = "🖐️ 展开相册";
     }
 }
 
@@ -381,13 +421,17 @@ function onClick() {
 function focusPhoto(mesh) {
     if (focusedPhoto && focusedPhoto !== mesh) focusedPhoto.userData.isFocused = false;
     focusedPhoto = mesh; mesh.userData.isFocused = true; 
+    const dimmerEl = document.getElementById('overlay-dimmer');
     if(dimmerEl) dimmerEl.style.background = 'rgba(0,0,0,0.8)'; updateStatus("viewing"); 
-    if(closeBtn) closeBtn.classList.add('visible'); targetBloomStrength = 0.1; 
+    const closeBtnEl = document.getElementById('close-btn');
+    if(closeBtnEl) closeBtnEl.classList.add('visible'); targetBloomStrength = 0.1; 
 }
 function unfocusPhoto() {
     if (focusedPhoto) { focusedPhoto.userData.isFocused = false; focusedPhoto = null; }
+    const dimmerEl = document.getElementById('overlay-dimmer');
     if(dimmerEl) dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); 
-    if(closeBtn) closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
+    const closeBtnEl = document.getElementById('close-btn');
+    if(closeBtnEl) closeBtnEl.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
 function startWebcam() {
@@ -405,6 +449,9 @@ function startWebcam() {
 }
 
 function updateStatus(state) {
+    const statusPill = document.getElementById('status-pill');
+    const statusText = document.getElementById('status-text');
+    const gestureIcon = document.getElementById('gesture-icon');
     if (!statusPill) return;
     statusPill.classList.remove('active');
     if (state === 'scattered') { if(statusText) statusText.innerText = "握拳 ✊ 召唤金马"; if(gestureIcon) gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
@@ -431,6 +478,7 @@ function animate() {
 
 function handleGesture(results) {
     if (manualMode || appState === 'EXPLODING') return;
+    const detectIndicator = document.getElementById('detect-indicator');
     if (results.landmarks && results.landmarks.length > 0) {
         if(detectIndicator) detectIndicator.classList.add('detected');
         const lm = results.landmarks[0]; const wrist = lm[0];
@@ -507,6 +555,10 @@ function updatePhotos() {
 }
 
 function setupAI() {
+    const aiBtn = document.getElementById('ai-btn'); const chatModal = document.getElementById('ai-chat-modal');
+    const closeChatBtn = document.getElementById('close-chat-btn'); const chatInput = document.getElementById('chat-input');
+    const sendMsgBtn = document.getElementById('send-msg-btn');
+    
     if(aiBtn) aiBtn.addEventListener('click', (e) => { e.stopPropagation(); if(chatModal) chatModal.classList.toggle('hidden'); });
     if(closeChatBtn) closeChatBtn.addEventListener('click', () => { if(chatModal) chatModal.classList.add('hidden'); });
     if(sendMsgBtn) sendMsgBtn.addEventListener('click', sendAIMessage);
@@ -526,7 +578,8 @@ async function callZhipuAI(prompt) {
 }
 
 async function sendAIMessage() {
-    if(!chatInput) return; const text = chatInput.value.trim(); if (!text) return;
+    const chatInput = document.getElementById('chat-input'); if(!chatInput) return;
+    const text = chatInput.value.trim(); if (!text) return;
     addMessageToChat(text, 'user-msg'); chatInput.value = '';
     const loadingId = 'loading-' + Date.now(); addMessageToChat('财神爷正在掐指一算...', 'ai-msg', loadingId);
     const reply = await callZhipuAI(text);
@@ -536,7 +589,7 @@ async function sendAIMessage() {
 }
 
 function addMessageToChat(content, className, id = null, isHTML = false) {
-    if(!chatMessages) return;
+    const chatMessages = document.getElementById('chat-messages'); if(!chatMessages) return;
     const msgDiv = document.createElement('div'); msgDiv.className = `message ${className}`; if (id) msgDiv.id = id;
     if (isHTML) msgDiv.innerHTML = content; else msgDiv.textContent = content;
     chatMessages.appendChild(msgDiv); chatMessages.scrollTop = chatMessages.scrollHeight;
