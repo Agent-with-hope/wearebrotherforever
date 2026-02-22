@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区 (保持图片 CDN 加速)
+// 🔴 用户核心配置区
 // ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
@@ -21,9 +21,7 @@ const CONFIG = {
     bloomStrength: isMobile ? 1.5 : 2.2, 
     bloomRadius: 0.6,
     bloomThreshold: 0,
-    
     horseImageUrl: '',
-    
     galleryImages: [
         CDN_PREFIX + "IMG_20220723_151111.jpg",
         CDN_PREFIX + "IMG_20220723_161917.jpg",
@@ -123,10 +121,10 @@ async function init() {
     setupAI(); 
     
     try {
-        // 模型下载 8秒熔断机制
-        await initMediaPipeWithTimeout(8000); 
+        // 🔴 将模型下载的网络等待时间放宽至 30 秒！赋予手势控制绝对的第一优先级
+        await initMediaPipeWithTimeout(30000); 
     } catch (e) {
-        console.warn("模型加载超时或受阻，自动切换手动模式", e);
+        console.warn("模型加载严重超时或设备受限，作为次位手段切换至手动模式", e);
         fallbackToManual("手势网络受阻或未授权，已切换手动模式");
     }
     
@@ -136,7 +134,7 @@ async function init() {
 async function initMediaPipeWithTimeout(timeoutMs) {
     const loadModelTask = new Promise(async (resolve, reject) => {
         try {
-            // 🔴 解决 404：WASM 文件必须从 unpkg 获取
+            // WASM 文件必须从 unpkg 获取
             const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
                 baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
@@ -152,10 +150,10 @@ async function initMediaPipeWithTimeout(timeoutMs) {
         setTimeout(() => reject(new Error("网络拉取核心文件超时")), timeoutMs)
     );
 
-    // 纯网络请求限制 8 秒
+    // 等待 30 秒拉取模型，保障手势体验
     await Promise.race([loadModelTask, timeoutTask]);
 
-    // 授权摄像头，无限期等待用户同意
+    // 授权摄像头，脱离时间限制，无限期等待用户同意
     await startWebcam();
 }
 
@@ -264,7 +262,6 @@ function processImageToPoints(img) {
 function generateFallbackHorse(resolveCallback) {
     const img = new Image();
     img.crossOrigin = "Anonymous";
-    // 🔴 解决 404：npm 包不包含 assets，必须使用 cdnjs 的原生图像托管
     img.src = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png";
     
     img.onload = () => {
@@ -293,7 +290,6 @@ function generateFallbackHorse(resolveCallback) {
     };
 
     img.onerror = () => {
-        // 万一断网，绘制文本马进行底层兜底
         const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
         const size = 400; canvas.width = size; canvas.height = size;
         ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
