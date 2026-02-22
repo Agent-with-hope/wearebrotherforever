@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -156,6 +155,10 @@ function initThree() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
     
+    // 🔴 修复画布拉伸变形：强制作为块级元素填满视口
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.width = '100vw';
+    renderer.domElement.style.height = '100vh';
     container.appendChild(renderer.domElement);
     
     controls = new OrbitControls(camera, renderer.domElement);
@@ -209,39 +212,61 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    const canvas = document.createElement('canvas'); 
-    const ctx = canvas.getContext('2d');
-    const size = 400; 
-    canvas.width = size; 
-    canvas.height = size;
+    // 🔴 完美攻克“大方块”：直接加载 Twemoji 标准图片资源，彻底抛弃本地系统字体引擎
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = "https://fastly.jsdelivr.net/npm/twemoji@14.0.2/assets/72x72/1f40e.png";
     
-    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // 🔴 终极修复：使用 JS 原生函数动态生成表情字符，代码中不出现任何特殊字符。
-    // 这将 100% 免疫各种编辑器保存编码造成的 SyntaxError 报错！
-    ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
-    
-    const imgData = ctx.getImageData(0, 0, size, size).data;
-    const tempPoints = []; 
-    const tempAura = []; 
-    const step = isMobile ? 3 : 2;
-    
-    for (let y = 0; y < size; y += step) {
-        for (let x = 0; x < size; x += step) {
-            if (imgData[(y * size + x) * 4 + 3] > 50) {
-                 const px = (x - size / 2) * CONFIG.horseScale; 
-                 const py = -(y - size / 2) * CONFIG.horseScale; 
-                 const pz = (Math.random() - 0.5) * 6;
-                 tempPoints.push(new THREE.Vector3(px, py, pz));
-                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+    img.onload = () => {
+        const canvas = document.createElement('canvas'); 
+        const ctx = canvas.getContext('2d');
+        const size = 400; canvas.width = size; canvas.height = size;
+        
+        // 放大渲染居中
+        ctx.drawImage(img, 40, 40, 320, 320);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+        
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                // 读取图片的透明度来生成粒子轮廓
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; 
+                     const py = -(y - size / 2) * CONFIG.horseScale; 
+                     const pz = (Math.random() - 0.5) * 6;
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                }
             }
         }
-    }
-    
-    fillPoints(tempPoints, tempAura);
-    if (resolveCallback) resolveCallback();
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
+    };
+
+    // 万一断网的最底线保护：画一个普通的汉字“马”，它绝对不会变成错误方块
+    img.onerror = () => {
+        const canvas = document.createElement('canvas'); 
+        const ctx = canvas.getContext('2d');
+        const size = 400; canvas.width = size; canvas.height = size;
+        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('马', size / 2, size / 2 + 20);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+        
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                }
+            }
+        }
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
+    };
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -314,7 +339,8 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            mesh.scale.set(0.0001, 0.0001, 0.0001);
+            // 🔴 拯救照片墙：下限缩小阈值定为 0.01，避免集成显卡矩阵精度崩溃
+            mesh.scale.set(0.01, 0.01, 0.01);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
             mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
@@ -323,12 +349,21 @@ function createPhotos() {
 }
 
 function setupInteraction() {
-    window.addEventListener('pointermove', (e) => { 
-        mouse.x = (e.clientX / window.innerWidth) * 2 - 1; 
-        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; 
+    let startX = 0, startY = 0;
+    window.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
+
+    window.addEventListener('pointerup', (e) => {
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist < 10) { 
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            onClick();
+        }
     });
-    
-    window.addEventListener('click', onClick);
+
+    window.addEventListener('pointermove', (e) => { 
+        if(!isMobile) { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; }
+    });
     
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
@@ -370,14 +405,9 @@ function unfocusPhoto() {
 
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-    
     handLandmarker = await HandLandmarker.createFromOptions(vision, { 
-        baseOptions: { 
-            modelAssetPath: "./models/hand_landmarker.task",
-            delegate: "GPU" 
-        }, 
-        runningMode: "VIDEO", 
-        numHands: 1 
+        baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
+        runningMode: "VIDEO", numHands: 1 
     });
     await startWebcam();
 }
@@ -387,18 +417,12 @@ function startWebcam() {
         webcam = document.getElementById('webcam');
         navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
             webcam.srcObject = stream;
-            
             webcam.addEventListener('loadeddata', () => { 
-                if (handLandmarker) {
-                    handLandmarker.detectForVideo(webcam, performance.now());
-                }
-                
+                if (handLandmarker) handLandmarker.detectForVideo(webcam, performance.now());
                 loadingScreen.style.opacity = 0; 
                 setTimeout(() => { if(loadingScreen) loadingScreen.remove(); }, 1000); 
-                updateStatus("scattered"); 
-                resolve(); 
+                updateStatus("scattered"); resolve(); 
             });
-            
         }).catch((err) => { reject(err); });
     });
 }
@@ -483,11 +507,16 @@ function updatePhotos() {
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1); mesh.scale.set(newScale, newScale, newScale);
         });
     } else {
+        // 🔴 智能防崩溃显隐逻辑
+        let allHidden = true;
         photos.forEach(mesh => { 
             mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
-            const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.0001, 0.1); 
+            // 采用 0.01 绝对安全缩放下限，兼容所有集显
+            const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.01, 0.1); 
             mesh.scale.set(newScale, newScale, newScale); 
+            if (newScale > 0.015) allHidden = false;
         });
+        if (allHidden) photoGroup.visible = false;
     }
 }
 
