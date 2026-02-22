@@ -8,13 +8,13 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 
-// 更改点：彻底抛弃不稳定代理，使用 Gcore CDN 镜像，它在国内通常非常丝滑且不随便重定向
-const CDN_PREFIX = `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
+// 更改点 1: 移除证书报错的节点，使用目前最稳定的 ghproxy.net 作为主图片加载源
+const CDN_PREFIX = `https://ghproxy.net/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/images/`;
 
-// 更改点：重新排列竞速策略，让国内连通率最高的节点打头阵
+// 更改点 2: 更新模型代理池，加入稳定反代 raw.gitmirror.com 增加容灾率
 const MODEL_PROXIES = [
-    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
-    `https://jsd.cdn.zzko.cn/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
+    `https://ghproxy.net/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
+    `https://raw.gitmirror.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
     `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
 ];
 
@@ -185,10 +185,10 @@ function initPostProcessing() {
 
 function generateHorseData() {
     return new Promise((resolve) => {
-        // 更改点：同样对 Twemoji 资源使用 Gcore CDN 和国内反代
+        // 更改点 3: Twemoji 同步使用最稳定的代理节点，移除失效域名
         const fallbacks = [
-            "https://gcore.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png",
-            "https://jsd.cdn.zzko.cn/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png"
+            "https://ghproxy.net/https://raw.githubusercontent.com/jdecked/twemoji/v15.0.3/assets/72x72/1f40e.png",
+            "https://raw.gitmirror.com/jdecked/twemoji/v15.0.3/assets/72x72/1f40e.png"
         ];
         let currentFallback = 0; const img = new Image(); img.crossOrigin = "Anonymous";
         
