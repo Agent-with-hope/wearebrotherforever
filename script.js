@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区
+// 🔴 用户核心配置区 (保持图片 CDN 加速)
 // ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
@@ -113,6 +113,7 @@ const chatMessages = document.getElementById('chat-messages');
 async function init() {
     initThree();
     initPostProcessing();
+    
     onWindowResize();
     
     await generateHorseData();
@@ -122,28 +123,26 @@ async function init() {
     setupAI(); 
     
     try {
-        // 🔴 核心极速防御：限时 8 秒专门针对网络下载
+        // 模型下载 8秒熔断机制
         await initMediaPipeWithTimeout(8000); 
     } catch (e) {
-        console.warn("由于网络受阻或无摄像头，切换为手动次位手段：", e);
+        console.warn("模型加载超时或受阻，自动切换手动模式", e);
         fallbackToManual("手势网络受阻或未授权，已切换手动模式");
     }
     
-    // 确保无论发生什么，3D 画面都会被渲染出来
     animate();
 }
 
-// 🔴 智能熔断机制：彻底解耦“网络下载”与“人类点击等待”
 async function initMediaPipeWithTimeout(timeoutMs) {
-    // 步骤 1：仅针对引擎网络下载的 Task
     const loadModelTask = new Promise(async (resolve, reject) => {
         try {
-            const vision = await FilesetResolver.forVisionTasks("https://npm.elemecdn.com/@mediapipe/tasks-vision@0.10.3/wasm");
+            // 🔴 解决 404：WASM 文件必须从 unpkg 获取
+            const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
                 baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
                 runningMode: "VIDEO", numHands: 1 
             });
-            resolve(); // 引擎构筑完毕立刻返回成功
+            resolve();
         } catch(err) {
             reject(err);
         }
@@ -153,10 +152,10 @@ async function initMediaPipeWithTimeout(timeoutMs) {
         setTimeout(() => reject(new Error("网络拉取核心文件超时")), timeoutMs)
     );
 
-    // 只有“下载文件”这个动作会被强制倒计时
+    // 纯网络请求限制 8 秒
     await Promise.race([loadModelTask, timeoutTask]);
 
-    // 步骤 2：启动摄像头授权。此时脱离时间限制，无限期等待用户同意
+    // 授权摄像头，无限期等待用户同意
     await startWebcam();
 }
 
@@ -165,12 +164,10 @@ function startWebcam() {
         webcam = document.getElementById('webcam');
         if(!webcam) return reject(new Error("找不到摄像头元素"));
         
-        // 提示用户必须进行手动确认
         if(loadingText) loadingText.innerHTML = "正在连接视觉神经...<br><span style='font-size:12px;color:#888;'>(请在浏览器弹窗中【允许】使用摄像头)</span>";
 
         navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } })
         .then((stream) => {
-            // 用户点击了“允许”
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 if (handLandmarker) handLandmarker.detectForVideo(webcam, performance.now());
@@ -180,7 +177,6 @@ function startWebcam() {
             });
         })
         .catch((err) => { 
-            // 用户点击了“拒绝”，或者设备确实没有摄像头
             reject(new Error("用户拒绝权限或无可用摄像头")); 
         });
     });
@@ -266,14 +262,10 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    const fallbacks = [
-        "https://npm.elemecdn.com/twemoji@14.0.2/assets/72x72/1f40e.png",
-        "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png"
-    ];
-    let currentFallback = 0;
-    
     const img = new Image();
     img.crossOrigin = "Anonymous";
+    // 🔴 解决 404：npm 包不包含 assets，必须使用 cdnjs 的原生图像托管
+    img.src = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png";
     
     img.onload = () => {
         const canvas = document.createElement('canvas'); 
@@ -301,31 +293,26 @@ function generateFallbackHorse(resolveCallback) {
     };
 
     img.onerror = () => {
-        currentFallback++;
-        if (currentFallback < fallbacks.length) {
-            img.src = fallbacks[currentFallback];
-        } else {
-            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-            const size = 400; canvas.width = size; canvas.height = size;
-            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('馬', size / 2, size / 2 + 20);
-            
-            const imgData = ctx.getImageData(0, 0, size, size).data;
-            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-            for (let y = 0; y < size; y += step) {
-                for (let x = 0; x < size; x += step) {
-                    if (imgData[(y * size + x) * 4 + 3] > 50) {
-                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                         tempPoints.push(new THREE.Vector3(px, py, pz));
-                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                    }
+        // 万一断网，绘制文本马进行底层兜底
+        const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+        const size = 400; canvas.width = size; canvas.height = size;
+        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('馬', size / 2, size / 2 + 20);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                if (imgData[(y * size + x) * 4 + 3] > 50) {
+                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                     tempPoints.push(new THREE.Vector3(px, py, pz));
+                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
                 }
             }
-            fillPoints(tempPoints, tempAura);
-            if (resolveCallback) resolveCallback();
         }
+        fillPoints(tempPoints, tempAura);
+        if (resolveCallback) resolveCallback();
     };
-    img.src = fallbacks[0];
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -375,7 +362,6 @@ function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = true; scene.add(photoGroup);
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
-    // 静默并发加载
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
         const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
