@@ -212,10 +212,11 @@ function generateFallbackHorse(resolveCallback) {
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
     const size = 400; canvas.width = size; canvas.height = size;
     
-    // 🔴 完美修复：用 &#x1F40E; (Unicode实体代码) 替代 🐎，彻底免疫保存编码导致的 Invalid token 报错
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-        <text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">&#x1F40E;</text>
-    </svg>`;
+    // 🔴 终极防报错修复：彻底抛弃反引号（`），改用单引号 + 纯单行字符串拼接
+    // 这样绝对不可能夹带任何隐形的换行符或零宽空格，免疫一切语法解析报错！
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">' +
+                '<text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">&#x1F40E;</text>' +
+                '</svg>';
     
     const img = new Image();
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
