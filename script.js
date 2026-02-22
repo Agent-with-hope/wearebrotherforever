@@ -5,9 +5,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-// ==========================================
-// 🔴 用户核心配置区
-// ==========================================
+
+// 用户核心配置区
+
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 
@@ -46,9 +46,9 @@ const CONFIG = {
     ] 
 };
 
-// ==========================================
+
 // 音效系统
-// ==========================================
+
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
     init() { 
@@ -85,9 +85,9 @@ class EtherealSynth {
     }
 }
 
-// ==========================================
+
 // 全局变量与 DOM
-// ==========================================
+
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
 let targetBloomStrength = CONFIG.bloomStrength; 
@@ -119,9 +119,9 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
-// ==========================================
+
 // 初始化与 3D 逻辑
-// ==========================================
+
 async function init() {
     initThree();
     initPostProcessing();
@@ -205,7 +205,7 @@ function processImageToPoints(img) {
                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale;
                 const distFromCenterY = Math.abs(y - size/2) / (size/2); const thickness = Math.cos(distFromCenterY * Math.PI / 2) * 8 + 2; 
                 const pz = (Math.random() - 0.5) * thickness; 
-                tempPoints.push(new THREE.Vector3(px, py, pz));
+                tempPoints。push(new THREE.Vector3(px, py, pz));
                 if (Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
             }
         }
@@ -286,14 +286,14 @@ function createParticles() {
 function getSprite() {
     const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32; const ctx = canvas.getContext('2d');
     const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, 'rgba(255,200,150,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    grad。addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, 'rgba(255,200,150,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(canvas);
 }
 
 function createPhotos() {
     photoGroup = new THREE.Group(); 
     photoGroup.visible = true; 
-    scene.add(photoGroup);
+    scene。add(photoGroup);
     
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
@@ -307,8 +307,8 @@ function createPhotos() {
             imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
         }
 
-        loader.load(imgUrl, (tex) => {
-            tex.colorSpace = THREE.SRGBColorSpace; 
+        loader。load(imgUrl, (tex) => {
+            tex。colorSpace = THREE.SRGBColorSpace; 
             const photoMaterial = new THREE.MeshBasicMaterial({ 
                 map: tex, 
                 side: THREE.DoubleSide, 
@@ -331,7 +331,7 @@ function createPhotos() {
 function setupInteraction() {
     window.addEventListener('pointermove', (e) => { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
     window.addEventListener('click', onClick);
-    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
+    closeBtn。addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
     audioBtn.addEventListener('click', (e) => {
         e.stopPropagation(); const isMuted = synth.toggleMute();
@@ -409,9 +409,9 @@ function startWebcam() {
 function updateStatus(state) {
     statusPill.classList.remove('active');
     if (state === 'scattered') { statusText.innerText = "握拳 ✊ 召唤金马"; gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
-    else if (state === 'fist') { statusText.innerText = "金马奔腾 • 蓄势待发"; gestureIcon.innerText = "🐎"; statusPill.classList.add('active'); } 
+    else if (state === 'fist') { statusText.innerText = "展开手掌 • 展望未来"; gestureIcon.innerText = "🌌"; statusPill.classList.add('active'); } 
     else if (state === 'palm') { statusText.innerText = "繁花似锦 • 岁岁平安"; gestureIcon.innerText = "🌸"; statusPill.classList.add('active'); statusPill.style.borderColor = "#ff4400"; } 
-    else if (state === 'viewing') { statusText.innerText = "正在浏览 • 点击关闭"; gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
+    else if (state === 'viewing') { statusText.innerText = "握紧拳头 • 掌握财富"; gestureIcon.innerText = "💰"; statusPill.classList.remove('active'); }
 }
 
 function animate() {
@@ -539,7 +539,7 @@ async function callZhipuAI(prompt) {
 
     } catch (error) {
         console.error("Local API Error:", error);
-        return "抱歉，财神爷的信号不太好（安全代理请求失败），请稍后再试！";
+        return "抱歉，财神爷的信号不太好，请稍后再试！";
     }
 }
 
