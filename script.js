@@ -6,11 +6,13 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区
+// 🔴 用户核心配置区 (全面 CDN 加速)
 // ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
+// 给模型文件也加上极速 CDN 路径
+const MODEL_CDN_PATH = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`;
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
@@ -23,22 +25,14 @@ const CONFIG = {
     bloomThreshold: 0,
     horseImageUrl: '',
     galleryImages: [
-        CDN_PREFIX + "IMG_20220723_151111.jpg",
-        CDN_PREFIX + "IMG_20220723_161917.jpg",
-        CDN_PREFIX + "IMG_20220723_170924.jpg",
-        CDN_PREFIX + "IMG_20220723_174018.jpg",
-        CDN_PREFIX + "IMG_20220723_184904.jpg",
-        CDN_PREFIX + "IMG_20220724_151129.jpg",
-        CDN_PREFIX + "IMG_20220724_151404.jpg",
-        CDN_PREFIX + "IMG_20220724_152254.jpg",
-        CDN_PREFIX + "IMG_20220724_153041.jpg",
-        CDN_PREFIX + "IMG_20220724_154313.jpg",
-        CDN_PREFIX + "IMG_20220724_154745.jpg",
-        CDN_PREFIX + "IMG_20220724_154904.jpg",
-        CDN_PREFIX + "IMG_20220725_150737.jpg",
-        CDN_PREFIX + "IMG_20220725_152033.jpg",
-        CDN_PREFIX + "IMG_20220725_153234.jpg",
-        CDN_PREFIX + "IMG_20220725_163419.jpg"
+        CDN_PREFIX + "IMG_20220723_151111.jpg", CDN_PREFIX + "IMG_20220723_161917.jpg",
+        CDN_PREFIX + "IMG_20220723_170924.jpg", CDN_PREFIX + "IMG_20220723_174018.jpg",
+        CDN_PREFIX + "IMG_20220723_184904.jpg", CDN_PREFIX + "IMG_20220724_151129.jpg",
+        CDN_PREFIX + "IMG_20220724_151404.jpg", CDN_PREFIX + "IMG_20220724_152254.jpg",
+        CDN_PREFIX + "IMG_20220724_153041.jpg", CDN_PREFIX + "IMG_20220724_154313.jpg",
+        CDN_PREFIX + "IMG_20220724_154745.jpg", CDN_PREFIX + "IMG_20220724_154904.jpg",
+        CDN_PREFIX + "IMG_20220725_150737.jpg", CDN_PREFIX + "IMG_20220725_152033.jpg",
+        CDN_PREFIX + "IMG_20220725_153234.jpg", CDN_PREFIX + "IMG_20220725_163419.jpg"
     ] 
 };
 
@@ -84,8 +78,7 @@ let targetBloomStrength = CONFIG.bloomStrength;
 let appState = 'SCATTERED'; 
 let time = 0, manualMode = false, fistHoldFrames = 0, hasInteracted = false; 
 const horsePoints = [], auraPoints = [], originalPositions = [], galleryPositions = [], photos = [];
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
 let focusedPhoto = null, isUserInteracting = false; 
 
 const synth = new EtherealSynth();
@@ -95,49 +88,51 @@ const statusText = document.getElementById('status-text');
 const gestureIcon = document.getElementById('gesture-icon');
 const detectIndicator = document.getElementById('detect-indicator');
 const loadingScreen = document.getElementById('loading-screen');
-const loadingText = document.getElementById('loading-text');
 const dimmerEl = document.getElementById('overlay-dimmer');
 const closeBtn = document.getElementById('close-btn');
 const manualBtn = document.getElementById('manual-btn');
 const audioBtn = document.getElementById('audio-btn');
 const gestureGuide = document.getElementById('gesture-guide');
-const aiBtn = document.getElementById('ai-btn');
-const chatModal = document.getElementById('ai-chat-modal');
-const closeChatBtn = document.getElementById('close-chat-btn');
-const chatInput = document.getElementById('chat-input');
-const sendMsgBtn = document.getElementById('send-msg-btn');
-const chatMessages = document.getElementById('chat-messages');
 
 async function init() {
     initThree();
     initPostProcessing();
-    
     onWindowResize();
     
+    // 基础视觉元素极速加载（文字马/极小占位图）
     await generateHorseData();
     createParticles();
     createPhotos(); 
     setupInteraction();
     setupAI(); 
     
-    try {
-        // 🔴 将模型下载的网络等待时间放宽至 30 秒！赋予手势控制绝对的第一优先级
-        await initMediaPipeWithTimeout(30000); 
-    } catch (e) {
-        console.warn("模型加载严重超时或设备受限，作为次位手段切换至手动模式", e);
-        fallbackToManual("手势网络受阻或未授权，已切换手动模式");
-    }
+    // 🔴 核心解耦：在这里直接隐藏 Loading 屏幕并启动 3D 渲染，绝对不被 AI 模型下载卡住！
+    if(loadingScreen) loadingScreen.style.opacity = '0';
+    setTimeout(() => { if(loadingScreen) loadingScreen.style.display = 'none'; }, 500);
     
-    animate();
+    if(statusText) statusText.innerText = "后台加载神经引擎...";
+    if(gestureIcon) gestureIcon.innerText = "⏳";
+    
+    animate(); // 3D 世界开始流转，用户此时已经可以点击“手动模式”按钮进行交互了
+    
+    // 🔴 后台静默加载 AI 引擎，用户完全无感
+    initMediaPipeWithTimeout(30000).catch((e) => {
+        console.warn("模型加载超时或受阻，自动降级为纯手动模式", e);
+        fallbackToManual("手势网络受阻或未授权，已降级手动模式");
+    });
 }
 
+// 熔断与加载机制
 async function initMediaPipeWithTimeout(timeoutMs) {
     const loadModelTask = new Promise(async (resolve, reject) => {
         try {
-            // WASM 文件必须从 unpkg 获取
             const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
-                baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
+                baseOptions: { 
+                    // 🔴 核心提速：模型文件使用 CDN 直连，大幅缩短下载时间
+                    modelAssetPath: MODEL_CDN_PATH, 
+                    delegate: "GPU" 
+                }, 
                 runningMode: "VIDEO", numHands: 1 
             });
             resolve();
@@ -150,10 +145,10 @@ async function initMediaPipeWithTimeout(timeoutMs) {
         setTimeout(() => reject(new Error("网络拉取核心文件超时")), timeoutMs)
     );
 
-    // 等待 30 秒拉取模型，保障手势体验
+    // 等待 30 秒拉取模型
     await Promise.race([loadModelTask, timeoutTask]);
 
-    // 授权摄像头，脱离时间限制，无限期等待用户同意
+    // 授权摄像头，脱离时间限制
     await startWebcam();
 }
 
@@ -162,14 +157,13 @@ function startWebcam() {
         webcam = document.getElementById('webcam');
         if(!webcam) return reject(new Error("找不到摄像头元素"));
         
-        if(loadingText) loadingText.innerHTML = "正在连接视觉神经...<br><span style='font-size:12px;color:#888;'>(请在浏览器弹窗中【允许】使用摄像头)</span>";
-
+        if(statusText) statusText.innerText = "请在弹窗中允许摄像头";
+        
         navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } })
         .then((stream) => {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 if (handLandmarker) handLandmarker.detectForVideo(webcam, performance.now());
-                if(loadingScreen) loadingScreen.style.display = 'none'; 
                 updateStatus("scattered"); 
                 resolve(); 
             });
@@ -181,13 +175,16 @@ function startWebcam() {
 }
 
 function fallbackToManual(msg) {
-    if(loadingText) loadingText.innerText = msg;
     if(statusText) statusText.innerText = "免摄模式已开启";
+    if(gestureIcon) gestureIcon.innerText = "🖐️";
     if(manualBtn) {
         manualBtn.classList.add('active');
-        manualBtn.innerText = "🖐️ 点击展开相册";
+        if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
+            manualBtn.innerText = "🖐️ 点击展开相册";
+        } else {
+            manualBtn.innerText = "✊ 凝聚骏马";
+        }
     }
-    setTimeout(() => { if(loadingScreen) loadingScreen.style.display = 'none'; }, 1000);
     hideGuide();
 }
 
@@ -225,90 +222,47 @@ function initPostProcessing() {
 
 function generateHorseData() {
     return new Promise((resolve) => {
-        if (!CONFIG.horseImageUrl) {
-            generateFallbackHorse(resolve);
-            return;
-        }
-        const img = new Image(); img.crossOrigin = "Anonymous"; img.src = CONFIG.horseImageUrl;
-        img.onload = () => { processImageToPoints(img); resolve(); };
-        img.onerror = () => { generateFallbackHorse(resolve); };
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png";
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+            const size = 400; canvas.width = size; canvas.height = size;
+            ctx.drawImage(img, 40, 40, 320, 320);
+            const imgData = ctx.getImageData(0, 0, size, size).data;
+            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+            for (let y = 0; y < size; y += step) {
+                for (let x = 0; x < size; x += step) {
+                    if (imgData[(y * size + x) * 4 + 3] > 50) {
+                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                         tempPoints.push(new THREE.Vector3(px, py, pz));
+                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                    }
+                }
+            }
+            fillPoints(tempPoints, tempAura); resolve();
+        };
+
+        img.onerror = () => {
+            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+            const size = 400; canvas.width = size; canvas.height = size;
+            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('馬', size / 2, size / 2 + 20);
+            const imgData = ctx.getImageData(0, 0, size, size).data;
+            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+            for (let y = 0; y < size; y += step) {
+                for (let x = 0; x < size; x += step) {
+                    if (imgData[(y * size + x) * 4 + 3] > 50) {
+                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                         tempPoints.push(new THREE.Vector3(px, py, pz));
+                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                    }
+                }
+            }
+            fillPoints(tempPoints, tempAura); resolve();
+        };
     });
-}
-
-function processImageToPoints(img) {
-    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-    const size = 400; canvas.width = size; canvas.height = size;
-    const aspect = img.width / img.height; let drawWidth = size; let drawHeight = size / aspect;
-    if (aspect < 1) { drawHeight = size; drawWidth = size * aspect; }
-    ctx.drawImage(img, (size - drawWidth)/2, (size - drawHeight)/2, drawWidth, drawHeight);
-    
-    const imgData = ctx.getImageData(0, 0, size, size).data;
-    const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2; 
-    
-    for (let y = 0; y < size; y += step) {
-        for (let x = 0; x < size; x += step) {
-            if (imgData[(y * size + x) * 4] < 240) { 
-                const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale;
-                const distFromCenterY = Math.abs(y - size/2) / (size/2); const thickness = Math.cos(distFromCenterY * Math.PI / 2) * 8 + 2; 
-                const pz = (Math.random() - 0.5) * thickness; 
-                tempPoints.push(new THREE.Vector3(px, py, pz));
-                if (Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-            }
-        }
-    }
-    fillPoints(tempPoints, tempAura);
-}
-
-function generateFallbackHorse(resolveCallback) {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png";
-    
-    img.onload = () => {
-        const canvas = document.createElement('canvas'); 
-        const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        
-        ctx.drawImage(img, 40, 40, 320, 320);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; 
-                     const py = -(y - size / 2) * CONFIG.horseScale; 
-                     const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
-            }
-        }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
-
-    img.onerror = () => {
-        const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('馬', size / 2, size / 2 + 20);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
-            }
-        }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -342,7 +296,6 @@ function createParticles() {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-
     particleMaterial = new THREE.PointsMaterial({ size: 0.5, map: getSprite(), vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.95 });
     particles = new THREE.Points(geometry, particleMaterial); scene.add(particles);
 }
