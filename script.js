@@ -117,17 +117,19 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
-// 🔴 强制顺序队列：等待所有图片下载完成后，才进入下一步
 async function init() {
     initThree();
     initPostProcessing();
+    
+    // 强制调用一次安全排版，确保画面比例完美
+    onWindowResize();
     
     if(loadingText) loadingText.innerText = "正在凝聚金马粒子...";
     await generateHorseData();
     createParticles();
     
     if(loadingText) loadingText.innerText = `正在预加载高清相册... (0/${CONFIG.photoCount})`;
-    await createPhotos(); // <--- 核心修复：死等照片加载完成
+    await createPhotos();
     
     setupInteraction();
     setupAI(); 
@@ -172,8 +174,6 @@ function initThree() {
     controls.addEventListener('start', () => isUserInteracting = true);
     controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
-    
-    onWindowResize();
 }
 
 function initPostProcessing() {
@@ -316,7 +316,6 @@ function getSprite() {
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(canvas);
 }
 
-// 🔴 核心修复：引入 Promise 机制，必须等所有网图下完才允许继续
 function createPhotos() {
     return new Promise((resolve) => {
         photoGroup = new THREE.Group(); 
@@ -330,11 +329,10 @@ function createPhotos() {
         let loadedCount = 0;
         const totalCount = CONFIG.photoCount;
         
-        // 进度检查器
         function checkComplete() {
             loadedCount++;
             if (loadingText) loadingText.innerText = `正在预加载高清相册... (${loadedCount}/${totalCount})`;
-            if (loadedCount >= totalCount) resolve(); // 只有当 30 张图全搞定，才允许通行
+            if (loadedCount >= totalCount) resolve();
         }
         
         for (let i = 0; i < totalCount; i++) {
@@ -354,7 +352,6 @@ function createPhotos() {
             loader.load(
                 imgUrl, 
                 (tex) => {
-                    // 图片下载成功
                     tex.colorSpace = THREE.SRGBColorSpace; 
                     const photoMaterial = new THREE.MeshBasicMaterial({ 
                         map: tex, 
@@ -368,19 +365,16 @@ function createPhotos() {
                     mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
                     mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
                     photoGroup.add(mesh); photos.push(mesh);
-                    
                     checkComplete();
                 },
                 undefined,
                 (err) => {
-                    // 万一某张图加载失败，创建一个深灰色方块顶替，防止进度卡死
                     const photoMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, color: 0x444444 });
                     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
                     mesh.scale.set(0.01, 0.01, 0.01);
                     mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
                     mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
                     photoGroup.add(mesh); photos.push(mesh);
-                    
                     checkComplete();
                 }
             );
@@ -476,12 +470,26 @@ function updateStatus(state) {
     else if (state === 'viewing') { statusText.innerText = "正在浏览 • 点击关闭"; gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
 }
 
+// 🔴 终极防御：如果执行时某些变量还未创建完毕，坚决不抛出错误中断程序
+function onWindowResize() { 
+    if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight; 
+        camera.updateProjectionMatrix(); 
+        renderer.setSize(window.innerWidth, window.innerHeight); 
+    }
+    if (composer) {
+        composer.setSize(window.innerWidth, window.innerHeight); 
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate); time += 0.01;
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
     if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
     updateParticles(); updatePhotos();
-    controls.autoRotate = !focusedPhoto; controls.update(); composer.render();
+    if (controls) controls.autoRotate = !focusedPhoto; 
+    if (controls) controls.update(); 
+    if (composer) composer.render();
 }
 
 function handleGesture(results) {
@@ -508,6 +516,7 @@ function handleGesture(results) {
 }
 
 function updateParticles() {
+    if (!particles || !particles.geometry) return;
     const positions = particles.geometry.attributes.position.array; const bodyCount = Math.floor(CONFIG.particleCount * 0.8);
     for (let i = 0; i < CONFIG.particleCount; i++) {
         const ix = i * 3; let tx, ty, tz;
@@ -532,6 +541,7 @@ function updateParticles() {
 }
 
 function updatePhotos() {
+    if (!photoGroup) return;
     if (appState === 'EXPLODING' || appState === 'GALLERY') {
         photoGroup.visible = true;
         photos.forEach((mesh, i) => {
@@ -558,8 +568,6 @@ function updatePhotos() {
         if (allHidden) photoGroup.visible = false;
     }
 }
-
-function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
 function setupAI() {
     aiBtn.addEventListener('click', (e) => {
