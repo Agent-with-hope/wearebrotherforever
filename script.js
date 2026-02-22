@@ -12,11 +12,10 @@ const GITHUB_USER = "Agent-with-hope";
 const GITHUB_REPO = "wearebrotherforever";       
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
-// 🔴 极速且干净的竞速节点：全部采用 JSDelivr 官方旗下的不同底层网络，杜绝野鸡节点报错
+// 🔴 剔除失效节点：只使用最稳定的官方底层网络进行 30 秒竞速
 const MODEL_PROXIES = [
     `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
     `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
-    `https://testingcf.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
     `https://cdn.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
 ];
 
@@ -130,7 +129,6 @@ async function init() {
     animate();
 }
 
-// 核心极速下载引擎：多节点并发竞速 (Promise Racing)
 async function fetchModelWithRace() {
     const fetchPromises = MODEL_PROXIES.map(url => 
         fetch(url, { cache: "force-cache" }).then(res => {
@@ -138,7 +136,6 @@ async function fetchModelWithRace() {
             return res.blob();
         })
     );
-    // 只要一个节点成功，立即返回该节点的数据
     const fastestBlob = await Promise.any(fetchPromises);
     return URL.createObjectURL(fastestBlob);
 }
@@ -149,12 +146,11 @@ async function initMediaPipeWithTimeout(timeoutMs) {
             const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
             
             if(statusText) statusText.innerText = "获取视觉引擎...";
-            // 使用竞速函数获取本地零延迟加载路径
             const localFastModelUrl = await fetchModelWithRace();
 
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
                 baseOptions: { 
-                    modelAssetPath: localFastModelUrl, // 从本地内存极速读入引擎
+                    modelAssetPath: localFastModelUrl,
                     delegate: "GPU" 
                 }, 
                 runningMode: "VIDEO", numHands: 1 
@@ -284,10 +280,10 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
+    // 🔴 首选项：优先拉取最新的官方开源图片节点，确保 100% 显示 3D 马
     const fallbacks = [
-        // 🔴 解决 404 与 CORS：使用专门的静态库 cdnjs 和 jsDelivr 核心源
-        "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png",
-        "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png"
+        "https://fastly.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png",
+        "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.3/assets/72x72/1f40e.png"
     ];
     let currentFallback = 0;
     
@@ -324,26 +320,51 @@ function generateFallbackHorse(resolveCallback) {
         if (currentFallback < fallbacks.length) {
             img.src = fallbacks[currentFallback];
         } else {
+            // 🔴 备选项：如果图片全被墙，采用系统原生 Emoji 画马
             const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
             const size = 400; canvas.width = size; canvas.height = size;
-            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('馬', size / 2, size / 2 + 20);
+            ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
             
             const imgData = ctx.getImageData(0, 0, size, size).data;
             const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+            let hasPixels = false; // 检测是否有画出实际内容（防止 Windows 画不出 Emoji）
+            
             for (let y = 0; y < size; y += step) {
                 for (let x = 0; x < size; x += step) {
                     if (imgData[(y * size + x) * 4 + 3] > 50) {
+                         hasPixels = true;
                          const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
                          tempPoints.push(new THREE.Vector3(px, py, pz));
                          if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
                     }
                 }
             }
+            
+            // 🔴 终极底线备选：如果确实连 Emoji 都画不出来，最后才被迫退化为汉字 '馬'
+            if (!hasPixels) {
+                ctx.clearRect(0, 0, size, size);
+                ctx.font = 'bold 280px sans-serif';
+                ctx.fillText('馬', size / 2, size / 2 + 20);
+                const fallbackData = ctx.getImageData(0, 0, size, size).data;
+                for (let y = 0; y < size; y += step) {
+                    for (let x = 0; x < size; x += step) {
+                        if (fallbackData[(y * size + x) * 4 + 3] > 50) {
+                             const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                             tempPoints.push(new THREE.Vector3(px, py, pz));
+                             if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                        }
+                    }
+                }
+            }
+            
             fillPoints(tempPoints, tempAura);
             if (resolveCallback) resolveCallback();
         }
     };
+    
+    // 开始获取首选的 3D 马图片
     img.src = fallbacks[0];
 }
 
