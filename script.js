@@ -44,9 +44,6 @@ const CONFIG = {
     ] 
 };
 
-// ==========================================
-// 音效系统
-// ==========================================
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
     init() { 
@@ -74,18 +71,9 @@ class EtherealSynth {
         osc.type = 'triangle'; osc.frequency.setValueAtTime(200, this.ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.5);
         gain.gain.setValueAtTime(0.5, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
         osc.start(); osc.stop(this.ctx.currentTime + 0.5);
-
-        const osc2 = this.ctx.createOscillator(); const gain2 = this.ctx.createGain();
-        osc2.connect(gain2); gain2.connect(this.ctx.destination);
-        osc2.type = 'sine'; osc2.frequency.setValueAtTime(800, this.ctx.currentTime); osc2.frequency.exponentialRampToValueAtTime(2000, this.ctx.currentTime + 0.2);
-        gain2.gain.setValueAtTime(0.2, this.ctx.currentTime); gain2.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 1.0);
-        osc2.start(); osc2.stop(this.ctx.currentTime + 1.0);
     }
 }
 
-// ==========================================
-// 全局变量与 DOM
-// ==========================================
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
 let targetBloomStrength = CONFIG.bloomStrength; 
@@ -109,7 +97,6 @@ const closeBtn = document.getElementById('close-btn');
 const manualBtn = document.getElementById('manual-btn');
 const audioBtn = document.getElementById('audio-btn');
 const gestureGuide = document.getElementById('gesture-guide');
-
 const aiBtn = document.getElementById('ai-btn');
 const chatModal = document.getElementById('ai-chat-modal');
 const closeChatBtn = document.getElementById('close-chat-btn');
@@ -121,33 +108,58 @@ async function init() {
     initThree();
     initPostProcessing();
     
+    // 强制调用，确保笔记本上不会出现宽高比例失调
     onWindowResize();
     
-    if(loadingText) loadingText.innerText = "正在凝聚金马粒子...";
     await generateHorseData();
     createParticles();
-    
-    if(loadingText) loadingText.innerText = `正在预加载高清相册... (0/${CONFIG.photoCount})`;
-    await createPhotos();
-    
+    createPhotos(); // 后台静默加载照片，绝不阻塞主线程
     setupInteraction();
     setupAI(); 
     
     try {
-        if(loadingText) loadingText.innerHTML = "正在唤醒 AI 视觉引擎...<br><span style='font-size:12px;color:#888;'>(首次进入请允许摄像头权限)</span>";
-        await initMediaPipe(); 
+        // 🔴 核心极速防御：给 AI 模型加载增加强制熔断器，绝不等待超过 8 秒！
+        await initMediaPipeWithTimeout(8000); 
     } catch (e) {
-        fallbackToManual("相机调用失败或无权限，已自动切换为手动模式");
+        console.warn("模型加载超时或被墙，自动切换手动模式");
+        fallbackToManual("相机初始化失败，已切为手动");
     }
+    
+    // 确保无论发生什么错误，都会启动 3D 渲染循环移除白屏
     animate();
+}
+
+// 🔴 熔断机制函数
+async function initMediaPipeWithTimeout(timeoutMs) {
+    const loadTask = new Promise(async (resolve, reject) => {
+        try {
+            const vision = await FilesetResolver.forVisionTasks("https://npm.elemecdn.com/@mediapipe/tasks-vision@0.10.3/wasm");
+            handLandmarker = await HandLandmarker.createFromOptions(vision, { 
+                baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
+                runningMode: "VIDEO", numHands: 1 
+            });
+            await startWebcam();
+            resolve();
+        } catch(err) {
+            reject(err);
+        }
+    });
+
+    const timeoutTask = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("网络加载超时")), timeoutMs)
+    );
+
+    return Promise.race([loadTask, timeoutTask]);
 }
 
 function fallbackToManual(msg) {
     if(loadingText) loadingText.innerText = msg;
     if(statusText) statusText.innerText = "免摄模式已开启";
-    manualBtn.classList.add('active');
-    manualBtn.innerText = "🖐️ 点击展开相册";
-    setTimeout(() => { if(loadingScreen) loadingScreen.remove(); }, 1000);
+    if(manualBtn) {
+        manualBtn.classList.add('active');
+        manualBtn.innerText = "🖐️ 点击展开相册";
+    }
+    setTimeout(() => { if(loadingScreen) loadingScreen.style.display = 'none'; }, 1000);
     hideGuide();
 }
 
@@ -159,6 +171,7 @@ function initThree() {
     camera.position.set(0, 0, 45);
     
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
@@ -219,75 +232,28 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    // 🔴 多节点双保险加载策略：告别 404
-    const fallbacks = [
-        // 1. GitHub 源码级托管 (永不删减文件)
-        "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png",
-        // 2. Cloudflare Cdnjs 权威托管 (国内偶尔抽风，备选)
-        "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png"
-    ];
-    let currentFallback = 0;
+    const canvas = document.createElement('canvas'); 
+    const ctx = canvas.getContext('2d');
+    const size = 400; canvas.width = size; canvas.height = size;
     
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
+    // 🔴 使用机器码底层生成 Emoji，彻底规避任何长字符串造成的引擎报错和方块图
+    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
     
-    img.onload = () => {
-        const canvas = document.createElement('canvas'); 
-        const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        
-        ctx.drawImage(img, 40, 40, 320, 320);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; 
-                     const py = -(y - size / 2) * CONFIG.horseScale; 
-                     const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
+    const imgData = ctx.getImageData(0, 0, size, size).data;
+    const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+    for (let y = 0; y < size; y += step) {
+        for (let x = 0; x < size; x += step) {
+            if (imgData[(y * size + x) * 4 + 3] > 50) {
+                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                 tempPoints.push(new THREE.Vector3(px, py, pz));
+                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
             }
         }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
-
-    img.onerror = () => {
-        currentFallback++;
-        if (currentFallback < fallbacks.length) {
-            img.src = fallbacks[currentFallback]; // 重试下一个节点
-        } else {
-            // 🔴 终极兜底：所有节点全被墙断网，用代码写死繁体字“馬”，确保项目不死！
-            console.warn("网络受限，已切换为后备文本模型");
-            const canvas = document.createElement('canvas'); 
-            const ctx = canvas.getContext('2d');
-            const size = 400; canvas.width = size; canvas.height = size;
-            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('馬', size / 2, size / 2 + 20);
-            
-            const imgData = ctx.getImageData(0, 0, size, size).data;
-            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-            
-            for (let y = 0; y < size; y += step) {
-                for (let x = 0; x < size; x += step) {
-                    if (imgData[(y * size + x) * 4 + 3] > 50) {
-                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                         tempPoints.push(new THREE.Vector3(px, py, pz));
-                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                    }
-                }
-            }
-            fillPoints(tempPoints, tempAura);
-            if (resolveCallback) resolveCallback();
-        }
-    };
-    
-    // 启动首次图片加载
-    img.src = fallbacks[0];
+    }
+    fillPoints(tempPoints, tempAura);
+    if (resolveCallback) resolveCallback();
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -321,7 +287,6 @@ function createParticles() {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-
     particleMaterial = new THREE.PointsMaterial({ size: 0.5, map: getSprite(), vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.95 });
     particles = new THREE.Points(geometry, particleMaterial); scene.add(particles);
 }
@@ -334,106 +299,74 @@ function getSprite() {
 }
 
 function createPhotos() {
-    return new Promise((resolve) => {
-        photoGroup = new THREE.Group(); 
-        photoGroup.visible = true; 
-        scene.add(photoGroup);
+    photoGroup = new THREE.Group(); photoGroup.visible = true; scene.add(photoGroup);
+    const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
+    
+    // 图片加载绝对不阻塞进程！任由它在后台跑
+    for (let i = 0; i < CONFIG.photoCount; i++) {
+        const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
+        const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
+        galleryPositions.push(new THREE.Vector3(tx, ty, tz));
         
-        const loader = new THREE.TextureLoader(); 
-        loader.setCrossOrigin('anonymous'); 
-        const phi = Math.PI * (3 - Math.sqrt(5)); 
-        
-        let loadedCount = 0;
-        const totalCount = CONFIG.photoCount;
-        
-        function checkComplete() {
-            loadedCount++;
-            if (loadingText) loadingText.innerText = `正在预加载高清相册... (${loadedCount}/${totalCount})`;
-            if (loadedCount >= totalCount) resolve();
+        let imgUrl = `https://picsum.photos/400/600?random=${i+99}`;
+        if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) {
+            imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
         }
-        
-        for (let i = 0; i < totalCount; i++) {
-            const y = 1 - (i / (totalCount - 1)) * 2; 
-            const radius = Math.sqrt(1 - y * y); 
-            const theta = phi * i;
-            const tx = Math.cos(theta) * radius * 25; 
-            const ty = y * 25; 
-            const tz = Math.sin(theta) * radius * 25;
-            galleryPositions.push(new THREE.Vector3(tx, ty, tz));
-            
-            let imgUrl = `https://picsum.photos/400/600?random=${i+99}`;
-            if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) {
-                imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
-            }
 
-            loader.load(
-                imgUrl, 
-                (tex) => {
-                    tex.colorSpace = THREE.SRGBColorSpace; 
-                    const photoMaterial = new THREE.MeshBasicMaterial({ 
-                        map: tex, 
-                        side: THREE.DoubleSide, 
-                        transparent: true,
-                        color: 0xcccccc 
-                    });
-
-                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-                    mesh.scale.set(0.01, 0.01, 0.01);
-                    mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
-                    mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
-                    photoGroup.add(mesh); photos.push(mesh);
-                    checkComplete();
-                },
-                undefined,
-                (err) => {
-                    const photoMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, color: 0x444444 });
-                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-                    mesh.scale.set(0.01, 0.01, 0.01);
-                    mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
-                    mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
-                    photoGroup.add(mesh); photos.push(mesh);
-                    checkComplete();
-                }
-            );
-        }
-    });
+        loader.load(imgUrl, (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace; 
+            const photoMaterial = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true, color: 0xcccccc });
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
+            mesh.scale.set(0.01, 0.01, 0.01);
+            mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
+            mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
+        });
+    }
 }
 
 function setupInteraction() {
     let startX = 0, startY = 0;
     window.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
-
     window.addEventListener('pointerup', (e) => {
         const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
         if (dist < 10) { 
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            onClick();
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; onClick();
         }
     });
-
     window.addEventListener('pointermove', (e) => { 
         if(!isMobile) { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; }
     });
     
-    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
-    manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
-    audioBtn.addEventListener('click', (e) => {
+    if(closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
+    if(manualBtn) manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
+    if(audioBtn) audioBtn.addEventListener('click', (e) => {
         e.stopPropagation(); const isMuted = synth.toggleMute();
         if (!isMuted) { audioBtn.innerText = "🔊 音效已开"; audioBtn.classList.add('active'); if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); } 
         else { audioBtn.innerText = "🔇 音效已关"; audioBtn.classList.remove('active'); }
     });
 }
 
-function hideGuide() { if (!hasInteracted) { gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } }
+function hideGuide() { 
+    if (!hasInteracted) { 
+        if(gestureGuide) gestureGuide.style.opacity = 0; 
+        hasInteracted = true; 
+        setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); 
+    } 
+}
 
 function toggleManualState() {
-    manualMode = true; manualBtn.classList.add('active'); detectIndicator.style.backgroundColor = '#00aaff'; hideGuide(); 
+    manualMode = true; 
+    if(manualBtn) manualBtn.classList.add('active'); 
+    if(detectIndicator) detectIndicator.style.backgroundColor = '#00aaff'; 
+    hideGuide(); 
+    
     if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
-        appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); manualBtn.innerText = "✊ 凝聚骏马";
+        appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); 
+        if(manualBtn) manualBtn.innerText = "✊ 凝聚骏马";
         setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus('viewing'); } }, 1500);
     } else {
-        appState = 'FORMING'; synth.playForm(); updateStatus('fist'); if (focusedPhoto) unfocusPhoto(); manualBtn.innerText = "🖐️ 展开相册";
+        appState = 'FORMING'; synth.playForm(); updateStatus('fist'); if (focusedPhoto) unfocusPhoto(); 
+        if(manualBtn) manualBtn.innerText = "🖐️ 展开相册";
     }
 }
 
@@ -447,20 +380,14 @@ function onClick() {
 
 function focusPhoto(mesh) {
     if (focusedPhoto && focusedPhoto !== mesh) focusedPhoto.userData.isFocused = false;
-    focusedPhoto = mesh; mesh.userData.isFocused = true; dimmerEl.style.background = 'rgba(0,0,0,0.8)'; updateStatus("viewing"); closeBtn.classList.add('visible'); targetBloomStrength = 0.1; 
+    focusedPhoto = mesh; mesh.userData.isFocused = true; 
+    if(dimmerEl) dimmerEl.style.background = 'rgba(0,0,0,0.8)'; updateStatus("viewing"); 
+    if(closeBtn) closeBtn.classList.add('visible'); targetBloomStrength = 0.1; 
 }
 function unfocusPhoto() {
     if (focusedPhoto) { focusedPhoto.userData.isFocused = false; focusedPhoto = null; }
-    dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
-}
-
-async function initMediaPipe() {
-    const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-    handLandmarker = await HandLandmarker.createFromOptions(vision, { 
-        baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
-        runningMode: "VIDEO", numHands: 1 
-    });
-    await startWebcam();
+    if(dimmerEl) dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); 
+    if(closeBtn) closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
 function startWebcam() {
@@ -470,8 +397,7 @@ function startWebcam() {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
                 if (handLandmarker) handLandmarker.detectForVideo(webcam, performance.now());
-                loadingScreen.style.opacity = 0; 
-                setTimeout(() => { if(loadingScreen) loadingScreen.remove(); }, 1000); 
+                if(loadingScreen) loadingScreen.style.display = 'none'; 
                 updateStatus("scattered"); resolve(); 
             });
         }).catch((err) => { reject(err); });
@@ -481,21 +407,17 @@ function startWebcam() {
 function updateStatus(state) {
     if (!statusPill) return;
     statusPill.classList.remove('active');
-    if (state === 'scattered') { statusText.innerText = "握拳 ✊ 召唤金马"; gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
-    else if (state === 'fist') { statusText.innerText = "金马奔腾 • 蓄势待发"; gestureIcon.innerText = "🐎"; statusPill.classList.add('active'); } 
-    else if (state === 'palm') { statusText.innerText = "繁花似锦 • 岁岁平安"; gestureIcon.innerText = "🌸"; statusPill.classList.add('active'); statusPill.style.borderColor = "#ff4400"; } 
-    else if (state === 'viewing') { statusText.innerText = "正在浏览 • 点击关闭"; gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
+    if (state === 'scattered') { if(statusText) statusText.innerText = "握拳 ✊ 召唤金马"; if(gestureIcon) gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
+    else if (state === 'fist') { if(statusText) statusText.innerText = "金马奔腾 • 蓄势待发"; if(gestureIcon) gestureIcon.innerText = "🐎"; statusPill.classList.add('active'); } 
+    else if (state === 'palm') { if(statusText) statusText.innerText = "繁花似锦 • 岁岁平安"; if(gestureIcon) gestureIcon.innerText = "🌸"; statusPill.classList.add('active'); statusPill.style.borderColor = "#ff4400"; } 
+    else if (state === 'viewing') { if(statusText) statusText.innerText = "正在浏览 • 点击关闭"; if(gestureIcon) gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
 }
 
 function onWindowResize() { 
-    if (camera && renderer) {
-        camera.aspect = window.innerWidth / window.innerHeight; 
-        camera.updateProjectionMatrix(); 
-        renderer.setSize(window.innerWidth, window.innerHeight); 
+    if(camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); 
     }
-    if (composer) {
-        composer.setSize(window.innerWidth, window.innerHeight); 
-    }
+    if(composer) composer.setSize(window.innerWidth, window.innerHeight); 
 }
 
 function animate() {
@@ -503,15 +425,14 @@ function animate() {
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
     if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
     updateParticles(); updatePhotos();
-    if (controls) controls.autoRotate = !focusedPhoto; 
-    if (controls) controls.update(); 
-    if (composer) composer.render();
+    if(controls) { controls.autoRotate = !focusedPhoto; controls.update(); }
+    if(composer) composer.render();
 }
 
 function handleGesture(results) {
     if (manualMode || appState === 'EXPLODING') return;
     if (results.landmarks && results.landmarks.length > 0) {
-        detectIndicator.classList.add('detected');
+        if(detectIndicator) detectIndicator.classList.add('detected');
         const lm = results.landmarks[0]; const wrist = lm[0];
         let distSum = 0; [8, 12, 16, 20].forEach(i => { const dx = lm[i].x - wrist.x; const dy = lm[i].y - wrist.y; distSum += Math.sqrt(dx*dx + dy*dy); });
         const avgDist = distSum / 4;
@@ -528,11 +449,11 @@ function handleGesture(results) {
                 setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus("viewing"); } }, 1500);
             }
         }
-    } else { detectIndicator.classList.remove('detected'); fistHoldFrames = 0; }
+    } else { if(detectIndicator) detectIndicator.classList.remove('detected'); fistHoldFrames = 0; }
 }
 
 function updateParticles() {
-    if (!particles || !particles.geometry) return;
+    if(!particles || !particles.geometry) return;
     const positions = particles.geometry.attributes.position.array; const bodyCount = Math.floor(CONFIG.particleCount * 0.8);
     for (let i = 0; i < CONFIG.particleCount; i++) {
         const ix = i * 3; let tx, ty, tz;
@@ -557,7 +478,7 @@ function updateParticles() {
 }
 
 function updatePhotos() {
-    if (!photoGroup) return;
+    if(!photoGroup) return;
     if (appState === 'EXPLODING' || appState === 'GALLERY') {
         photoGroup.visible = true;
         photos.forEach((mesh, i) => {
@@ -586,81 +507,39 @@ function updatePhotos() {
 }
 
 function setupAI() {
-    aiBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        chatModal.classList.toggle('hidden');
-    });
-
-    closeChatBtn.addEventListener('click', () => {
-        chatModal.classList.add('hidden');
-    });
-
-    sendMsgBtn.addEventListener('click', sendAIMessage);
-    chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendAIMessage();
-    });
+    if(aiBtn) aiBtn.addEventListener('click', (e) => { e.stopPropagation(); if(chatModal) chatModal.classList.toggle('hidden'); });
+    if(closeChatBtn) closeChatBtn.addEventListener('click', () => { if(chatModal) chatModal.classList.add('hidden'); });
+    if(sendMsgBtn) sendMsgBtn.addEventListener('click', sendAIMessage);
+    if(chatInput) chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAIMessage(); });
 }
 
 async function callZhipuAI(prompt) {
     try {
         const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ prompt: prompt })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompt })
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const json = await response.json();
-        
-        if (json.error) {
-            throw new Error(json.error);
-        }
-
+        if (json.error) throw new Error(json.error);
         return json.reply;
-
-    } catch (error) {
-        console.error("Local API Error:", error);
-        return "抱歉，财神爷的信号不太好（安全代理请求失败），请稍后再试！";
-    }
+    } catch (error) { return "抱歉，财神爷的信号不太好（安全代理请求失败），请稍后再试！"; }
 }
 
 async function sendAIMessage() {
-    const text = chatInput.value.trim();
-    if (!text) return;
-
-    addMessageToChat(text, 'user-msg');
-    chatInput.value = '';
-
-    const loadingId = 'loading-' + Date.now();
-    addMessageToChat('财神爷正在掐指一算...', 'ai-msg', loadingId);
-
+    if(!chatInput) return; const text = chatInput.value.trim(); if (!text) return;
+    addMessageToChat(text, 'user-msg'); chatInput.value = '';
+    const loadingId = 'loading-' + Date.now(); addMessageToChat('财神爷正在掐指一算...', 'ai-msg', loadingId);
     const reply = await callZhipuAI(text);
-
-    const loaderEl = document.getElementById(loadingId);
-    if(loaderEl) loaderEl.remove();
-    
+    const loaderEl = document.getElementById(loadingId); if(loaderEl) loaderEl.remove();
     const formattedReply = typeof marked !== 'undefined' ? marked.parse(reply) : reply;
     addMessageToChat(formattedReply, 'ai-msg', null, true);
 }
 
 function addMessageToChat(content, className, id = null, isHTML = false) {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${className}`;
-    if (id) msgDiv.id = id;
-    
-    if (isHTML) {
-        msgDiv.innerHTML = content;
-    } else {
-        msgDiv.textContent = content;
-    }
-
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if(!chatMessages) return;
+    const msgDiv = document.createElement('div'); msgDiv.className = `message ${className}`; if (id) msgDiv.id = id;
+    if (isHTML) msgDiv.innerHTML = content; else msgDiv.textContent = content;
+    chatMessages.appendChild(msgDiv); chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 init();
