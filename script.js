@@ -114,49 +114,50 @@ async function init() {
     initThree();
     initPostProcessing();
     
-    // 强制调用，确保笔记本上不会出现宽高比例失调
     onWindowResize();
     
     await generateHorseData();
     createParticles();
-    createPhotos(); // 后台静默加载照片，绝不阻塞主线程
+    createPhotos(); 
     setupInteraction();
     setupAI(); 
     
     try {
-        // 🔴 核心极速防御：给 AI 模型加载增加强制熔断器，绝不等待超过 8 秒！
-        await initMediaPipeWithTimeout(8000); 
+        // 🔴 将模型下载的网络等待时间稍微放宽至 10 秒
+        await initMediaPipeWithTimeout(10000); 
     } catch (e) {
-        console.warn("模型加载超时或受阻，自动切换手动模式");
+        console.warn("模型加载超时或受阻，自动切换手动模式", e);
         fallbackToManual("引擎载入完毕，已切换免摄模式");
     }
     
-    // 确保无论发生什么错误，都会启动 3D 渲染循环移除白屏
     animate();
 }
 
-// 🔴 熔断机制函数
+// 🔴 智能熔断机制：精准分离“网络下载超时”与“用户授权等待”
 async function initMediaPipeWithTimeout(timeoutMs) {
-    const loadTask = new Promise(async (resolve, reject) => {
+    // 步骤 1：纯网络下载任务（包含超时限制）
+    const loadModelTask = new Promise(async (resolve, reject) => {
         try {
-            // WASM 同样使用 Fastly 节点
             const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, { 
                 baseOptions: { modelAssetPath: "./models/hand_landmarker.task", delegate: "GPU" }, 
                 runningMode: "VIDEO", numHands: 1 
             });
-            await startWebcam();
-            resolve();
+            resolve(); // 网络下载与引擎构建成功
         } catch(err) {
             reject(err);
         }
     });
 
     const timeoutTask = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("网络加载超时")), timeoutMs)
+        setTimeout(() => reject(new Error("网络拉取 AI 模型文件超时")), timeoutMs)
     );
 
-    return Promise.race([loadTask, timeoutTask]);
+    // 等待模型下载，若超过10秒直接打断并抛出错误切入手动模式
+    await Promise.race([loadModelTask, timeoutTask]);
+
+    // 步骤 2：呼叫摄像头。这里千万不能加倒计时！必须无限期等用户慢慢点“允许”
+    await startWebcam();
 }
 
 function fallbackToManual(msg) {
@@ -239,56 +240,27 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    // 采用 GitHub 源码级托管加载图片，永不 404
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png";
+    const canvas = document.createElement('canvas'); 
+    const ctx = canvas.getContext('2d');
+    const size = 400; canvas.width = size; canvas.height = size;
     
-    img.onload = () => {
-        const canvas = document.createElement('canvas'); 
-        const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        
-        ctx.drawImage(img, 40, 40, 320, 320);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; 
-                     const py = -(y - size / 2) * CONFIG.horseScale; 
-                     const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
+    ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
+    
+    const imgData = ctx.getImageData(0, 0, size, size).data;
+    const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+    for (let y = 0; y < size; y += step) {
+        for (let x = 0; x < size; x += step) {
+            if (imgData[(y * size + x) * 4 + 3] > 50) {
+                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                 tempPoints.push(new THREE.Vector3(px, py, pz));
+                 if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
             }
         }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
-
-    // 万一断网，绘制文本马进行底层兜底
-    img.onerror = () => {
-        const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('馬', size / 2, size / 2 + 20);
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
-                }
-            }
-        }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
-    };
+    }
+    fillPoints(tempPoints, tempAura);
+    if (resolveCallback) resolveCallback();
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -338,7 +310,6 @@ function createPhotos() {
     photoGroup = new THREE.Group(); photoGroup.visible = true; scene.add(photoGroup);
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
-    // 照片静默加载，绝不阻塞！
     for (let i = 0; i < CONFIG.photoCount; i++) {
         const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
         const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
@@ -389,7 +360,11 @@ function setupInteraction() {
 
 function hideGuide() { 
     const gestureGuide = document.getElementById('gesture-guide');
-    if (!hasInteracted) { if(gestureGuide) gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } 
+    if (!hasInteracted) { 
+        if(gestureGuide) gestureGuide.style.opacity = 0; 
+        hasInteracted = true; 
+        setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); 
+    } 
 }
 
 function toggleManualState() {
@@ -437,6 +412,7 @@ function unfocusPhoto() {
 function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
+        if(!webcam) return reject("No webcam element");
         navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
             webcam.srcObject = stream;
             webcam.addEventListener('loadeddata', () => { 
