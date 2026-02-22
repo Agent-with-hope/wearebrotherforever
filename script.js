@@ -128,16 +128,17 @@ async function init() {
     try {
         await initMediaPipe(); 
     } catch (e) {
-        fallbackToManual("视觉模型加载受限，已切换手动");
+        fallbackToManual("相机调用失败或无权限，已自动切换为手动模式");
     }
     animate();
 }
 
 function fallbackToManual(msg) {
-    loadingText.innerText = msg || "请使用手动模式";
-    statusText.innerText = "点击按钮开始";
+    if(loadingText) loadingText.innerText = msg;
+    if(statusText) statusText.innerText = "免摄模式已开启";
     manualBtn.classList.add('active');
-    manualBtn.innerText = "👆 点击此处开始";
+    // 明确提示用户第一下点击的功能
+    manualBtn.innerText = "🖐️ 点击展开相册";
     setTimeout(() => { if(loadingScreen) loadingScreen.remove(); }, 1000);
     hideGuide();
 }
@@ -150,12 +151,11 @@ function initThree() {
     camera.position.set(0, 0, 45);
     
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
-    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
     
-    // 🔴 修复画布拉伸变形：强制作为块级元素填满视口
+    // 强制作为块级元素填满视口
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100vw';
     renderer.domElement.style.height = '100vh';
@@ -166,6 +166,9 @@ function initThree() {
     controls.addEventListener('start', () => isUserInteracting = true);
     controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
+    
+    // 强制初始化宽高
+    onWindowResize();
 }
 
 function initPostProcessing() {
@@ -212,7 +215,6 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
-    // 🔴 完美攻克“大方块”：直接加载 Twemoji 标准图片资源，彻底抛弃本地系统字体引擎
     const img = new Image();
     img.crossOrigin = "Anonymous";
     img.src = "https://fastly.jsdelivr.net/npm/twemoji@14.0.2/assets/72x72/1f40e.png";
@@ -222,7 +224,6 @@ function generateFallbackHorse(resolveCallback) {
         const ctx = canvas.getContext('2d');
         const size = 400; canvas.width = size; canvas.height = size;
         
-        // 放大渲染居中
         ctx.drawImage(img, 40, 40, 320, 320);
         
         const imgData = ctx.getImageData(0, 0, size, size).data;
@@ -230,7 +231,6 @@ function generateFallbackHorse(resolveCallback) {
         
         for (let y = 0; y < size; y += step) {
             for (let x = 0; x < size; x += step) {
-                // 读取图片的透明度来生成粒子轮廓
                 if (imgData[(y * size + x) * 4 + 3] > 50) {
                      const px = (x - size / 2) * CONFIG.horseScale; 
                      const py = -(y - size / 2) * CONFIG.horseScale; 
@@ -244,7 +244,6 @@ function generateFallbackHorse(resolveCallback) {
         if (resolveCallback) resolveCallback();
     };
 
-    // 万一断网的最底线保护：画一个普通的汉字“马”，它绝对不会变成错误方块
     img.onerror = () => {
         const canvas = document.createElement('canvas'); 
         const ctx = canvas.getContext('2d');
@@ -339,7 +338,6 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            // 🔴 拯救照片墙：下限缩小阈值定为 0.01，避免集成显卡矩阵精度崩溃
             mesh.scale.set(0.01, 0.01, 0.01);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
@@ -376,13 +374,34 @@ function setupInteraction() {
 
 function hideGuide() { if (!hasInteracted) { gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } }
 
+// 🔴 核心逻辑大修：理顺状态切换，首次点击直达照片墙！
 function toggleManualState() {
-    manualMode = true; manualBtn.classList.add('active'); detectIndicator.style.backgroundColor = '#00aaff'; hideGuide(); 
-    if (appState === 'SCATTERED' || appState === 'EXPLODING' || appState === 'GALLERY') {
-        appState = 'FORMING'; synth.playForm(); updateStatus('fist'); if (focusedPhoto) unfocusPhoto(); manualBtn.innerText = "🖐️ 点击展开回忆";
-    } else {
-        appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); manualBtn.innerText = "✊ 点击凝聚金马";
-        setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus('viewing'); } }, 1500);
+    manualMode = true; 
+    manualBtn.classList.add('active'); 
+    detectIndicator.style.backgroundColor = '#00aaff'; 
+    hideGuide(); 
+    
+    // 如果当前处于初始粒子状态，或者是一匹马的状态，点击按钮直接炸出照片墙！
+    if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
+        appState = 'EXPLODING'; 
+        synth.playExplode(); 
+        updateStatus('palm'); 
+        manualBtn.innerText = "✊ 凝聚骏马"; // 告诉用户下次点击会变成马
+        
+        setTimeout(() => { 
+            if (appState === 'EXPLODING') { 
+                appState = 'GALLERY'; 
+                updateStatus('viewing'); 
+            } 
+        }, 1500);
+    } 
+    // 如果当前已经是照片墙了，点击按钮则收起相册，凝聚成金马！
+    else {
+        appState = 'FORMING'; 
+        synth.playForm(); 
+        updateStatus('fist'); 
+        if (focusedPhoto) unfocusPhoto(); 
+        manualBtn.innerText = "🖐️ 展开相册"; // 告诉用户下次点击会展开相册
     }
 }
 
@@ -428,6 +447,7 @@ function startWebcam() {
 }
 
 function updateStatus(state) {
+    if (!statusPill) return;
     statusPill.classList.remove('active');
     if (state === 'scattered') { statusText.innerText = "握拳 ✊ 召唤金马"; gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
     else if (state === 'fist') { statusText.innerText = "金马奔腾 • 蓄势待发"; gestureIcon.innerText = "🐎"; statusPill.classList.add('active'); } 
@@ -507,11 +527,9 @@ function updatePhotos() {
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1); mesh.scale.set(newScale, newScale, newScale);
         });
     } else {
-        // 🔴 智能防崩溃显隐逻辑
         let allHidden = true;
         photos.forEach(mesh => { 
             mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
-            // 采用 0.01 绝对安全缩放下限，兼容所有集显
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.01, 0.1); 
             mesh.scale.set(newScale, newScale, newScale); 
             if (newScale > 0.015) allHidden = false;
