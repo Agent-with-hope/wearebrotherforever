@@ -117,15 +117,23 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
+// 🔴 强制顺序队列：等待所有图片下载完成后，才进入下一步
 async function init() {
     initThree();
     initPostProcessing();
+    
+    if(loadingText) loadingText.innerText = "正在凝聚金马粒子...";
     await generateHorseData();
     createParticles();
-    createPhotos();
+    
+    if(loadingText) loadingText.innerText = `正在预加载高清相册... (0/${CONFIG.photoCount})`;
+    await createPhotos(); // <--- 核心修复：死等照片加载完成
+    
     setupInteraction();
     setupAI(); 
+    
     try {
+        if(loadingText) loadingText.innerHTML = "正在唤醒 AI 视觉引擎...<br><span style='font-size:12px;color:#888;'>(首次进入请允许摄像头权限)</span>";
         await initMediaPipe(); 
     } catch (e) {
         fallbackToManual("相机调用失败或无权限，已自动切换为手动模式");
@@ -137,7 +145,6 @@ function fallbackToManual(msg) {
     if(loadingText) loadingText.innerText = msg;
     if(statusText) statusText.innerText = "免摄模式已开启";
     manualBtn.classList.add('active');
-    // 明确提示用户第一下点击的功能
     manualBtn.innerText = "🖐️ 点击展开相册";
     setTimeout(() => { if(loadingScreen) loadingScreen.remove(); }, 1000);
     hideGuide();
@@ -155,7 +162,6 @@ function initThree() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
     
-    // 强制作为块级元素填满视口
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100vw';
     renderer.domElement.style.height = '100vh';
@@ -167,7 +173,6 @@ function initThree() {
     controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
     
-    // 强制初始化宽高
     onWindowResize();
 }
 
@@ -311,39 +316,76 @@ function getSprite() {
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(canvas);
 }
 
+// 🔴 核心修复：引入 Promise 机制，必须等所有网图下完才允许继续
 function createPhotos() {
-    photoGroup = new THREE.Group(); 
-    photoGroup.visible = true; 
-    scene.add(photoGroup);
-    
-    const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
-    
-    for (let i = 0; i < CONFIG.photoCount; i++) {
-        const y = 1 - (i / (CONFIG.photoCount - 1)) * 2; const radius = Math.sqrt(1 - y * y); const theta = phi * i;
-        const tx = Math.cos(theta) * radius * 25; const ty = y * 25; const tz = Math.sin(theta) * radius * 25;
-        galleryPositions.push(new THREE.Vector3(tx, ty, tz));
+    return new Promise((resolve) => {
+        photoGroup = new THREE.Group(); 
+        photoGroup.visible = true; 
+        scene.add(photoGroup);
         
-        let imgUrl = `https://picsum.photos/400/600?random=${i+99}`;
-        if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) {
-            imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
+        const loader = new THREE.TextureLoader(); 
+        loader.setCrossOrigin('anonymous'); 
+        const phi = Math.PI * (3 - Math.sqrt(5)); 
+        
+        let loadedCount = 0;
+        const totalCount = CONFIG.photoCount;
+        
+        // 进度检查器
+        function checkComplete() {
+            loadedCount++;
+            if (loadingText) loadingText.innerText = `正在预加载高清相册... (${loadedCount}/${totalCount})`;
+            if (loadedCount >= totalCount) resolve(); // 只有当 30 张图全搞定，才允许通行
         }
-
-        loader.load(imgUrl, (tex) => {
-            tex.colorSpace = THREE.SRGBColorSpace; 
-            const photoMaterial = new THREE.MeshBasicMaterial({ 
-                map: tex, 
-                side: THREE.DoubleSide, 
-                transparent: true,
-                color: 0xcccccc 
-            });
-
-            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            mesh.scale.set(0.01, 0.01, 0.01);
+        
+        for (let i = 0; i < totalCount; i++) {
+            const y = 1 - (i / (totalCount - 1)) * 2; 
+            const radius = Math.sqrt(1 - y * y); 
+            const theta = phi * i;
+            const tx = Math.cos(theta) * radius * 25; 
+            const ty = y * 25; 
+            const tz = Math.sin(theta) * radius * 25;
+            galleryPositions.push(new THREE.Vector3(tx, ty, tz));
             
-            mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
-            mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
-        });
-    }
+            let imgUrl = `https://picsum.photos/400/600?random=${i+99}`;
+            if (CONFIG.galleryImages && CONFIG.galleryImages.length > 0) {
+                imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
+            }
+
+            loader.load(
+                imgUrl, 
+                (tex) => {
+                    // 图片下载成功
+                    tex.colorSpace = THREE.SRGBColorSpace; 
+                    const photoMaterial = new THREE.MeshBasicMaterial({ 
+                        map: tex, 
+                        side: THREE.DoubleSide, 
+                        transparent: true,
+                        color: 0xcccccc 
+                    });
+
+                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
+                    mesh.scale.set(0.01, 0.01, 0.01);
+                    mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
+                    mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
+                    photoGroup.add(mesh); photos.push(mesh);
+                    
+                    checkComplete();
+                },
+                undefined,
+                (err) => {
+                    // 万一某张图加载失败，创建一个深灰色方块顶替，防止进度卡死
+                    const photoMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, color: 0x444444 });
+                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
+                    mesh.scale.set(0.01, 0.01, 0.01);
+                    mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
+                    mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); 
+                    photoGroup.add(mesh); photos.push(mesh);
+                    
+                    checkComplete();
+                }
+            );
+        }
+    });
 }
 
 function setupInteraction() {
@@ -374,34 +416,13 @@ function setupInteraction() {
 
 function hideGuide() { if (!hasInteracted) { gestureGuide.style.opacity = 0; hasInteracted = true; setTimeout(() => { if(gestureGuide) gestureGuide.remove(); }, 1000); } }
 
-// 🔴 核心逻辑大修：理顺状态切换，首次点击直达照片墙！
 function toggleManualState() {
-    manualMode = true; 
-    manualBtn.classList.add('active'); 
-    detectIndicator.style.backgroundColor = '#00aaff'; 
-    hideGuide(); 
-    
-    // 如果当前处于初始粒子状态，或者是一匹马的状态，点击按钮直接炸出照片墙！
+    manualMode = true; manualBtn.classList.add('active'); detectIndicator.style.backgroundColor = '#00aaff'; hideGuide(); 
     if (appState === 'SCATTERED' || appState === 'FORMING' || appState === 'FORMED') {
-        appState = 'EXPLODING'; 
-        synth.playExplode(); 
-        updateStatus('palm'); 
-        manualBtn.innerText = "✊ 凝聚骏马"; // 告诉用户下次点击会变成马
-        
-        setTimeout(() => { 
-            if (appState === 'EXPLODING') { 
-                appState = 'GALLERY'; 
-                updateStatus('viewing'); 
-            } 
-        }, 1500);
-    } 
-    // 如果当前已经是照片墙了，点击按钮则收起相册，凝聚成金马！
-    else {
-        appState = 'FORMING'; 
-        synth.playForm(); 
-        updateStatus('fist'); 
-        if (focusedPhoto) unfocusPhoto(); 
-        manualBtn.innerText = "🖐️ 展开相册"; // 告诉用户下次点击会展开相册
+        appState = 'EXPLODING'; synth.playExplode(); updateStatus('palm'); manualBtn.innerText = "✊ 凝聚骏马";
+        setTimeout(() => { if (appState === 'EXPLODING') { appState = 'GALLERY'; updateStatus('viewing'); } }, 1500);
+    } else {
+        appState = 'FORMING'; synth.playForm(); updateStatus('fist'); if (focusedPhoto) unfocusPhoto(); manualBtn.innerText = "🖐️ 展开相册";
     }
 }
 
@@ -540,9 +561,6 @@ function updatePhotos() {
 
 function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
-// ==========================================
-// AI 金融顾问功能 (接入后端安全代理)
-// ==========================================
 function setupAI() {
     aiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
