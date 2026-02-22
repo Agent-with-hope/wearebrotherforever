@@ -11,17 +11,17 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
-    particleCount: isMobile ? 6000 : 15000, 
+    // 移动端自动减半粒子，保障手机不发烫、不卡顿
+    particleCount: isMobile ? 5000 : 15000, 
     horseScale: 0.14, 
     photoCount: 30, 
-    bloomStrength: isMobile ? 1.5 : 2.2, 
+    bloomStrength: isMobile ? 1.2 : 2.2, 
     bloomRadius: 0.6,
     bloomThreshold: 0,
     
     horseImageUrl: '',
     
-    // 🟢 核心修复：彻底告别外部 CDN，回归最稳定可靠的本地相对路径！
-    // 💡 提示：如果你的图片已经压缩成了 .webp 格式，请务必把下面的 .jpg 全局替换为 .webp
+    // 采用本地相对路径，最稳定可靠
     galleryImages: [
         "./images/IMG_20220723_151111.jpg",
         "./images/IMG_20220723_161917.jpg",
@@ -160,7 +160,8 @@ function initThree() {
     container.appendChild(renderer.domElement);
     
     controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; controls.dampingFactor = 0.05; controls.autoRotate = true; controls.autoRotateSpeed = 1.0; 
+    // 移动端体验优化：增强阻尼感，让滑动更顺滑
+    controls.enableDamping = true; controls.dampingFactor = 0.08; controls.autoRotate = true; controls.autoRotateSpeed = 1.0; 
     controls.addEventListener('start', () => isUserInteracting = true);
     controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
@@ -288,7 +289,6 @@ function getSprite() {
 
 function createPhotos() {
     photoGroup = new THREE.Group(); 
-    // 强制 GPU 后台加载图片，消除卡顿
     photoGroup.visible = true; 
     scene.add(photoGroup);
     
@@ -314,7 +314,6 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            // 极小比例渲染在中心点，欺骗 GPU 完成静默上传
             mesh.scale.set(0.0001, 0.0001, 0.0001);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
@@ -327,8 +326,31 @@ function createPhotos() {
 // 交互、动画与手势
 // ==========================================
 function setupInteraction() {
-    window.addEventListener('pointermove', (e) => { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
-    window.addEventListener('click', onClick);
+    // 桌面端鼠标移动事件
+    window.addEventListener('pointermove', (e) => { 
+        if(isMobile) return; // 手机端不需要追踪 hover 状态
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1; 
+        mouse.y = -(e.clientY / window.innerHeight) * 2 - 1; 
+    });
+
+    // 🚀 移动端核心修复：用 pointerdown/up 计算防抖，完美解决点击与滑动的冲突
+    let startX = 0, startY = 0;
+    window.addEventListener('pointerdown', (e) => {
+        startX = e.clientX;
+        startY = e.clientY;
+    });
+
+    window.addEventListener('pointerup', (e) => {
+        // 计算手指/鼠标移动的距离
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        // 如果移动距离极小（小于10像素），说明是“点击”而不是“滑动”
+        if (dist < 10) { 
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            onClick();
+        }
+    });
+
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
     audioBtn.addEventListener('click', (e) => {
@@ -353,9 +375,16 @@ function toggleManualState() {
 function onClick() {
     if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume();
     if (appState !== 'GALLERY') return;
-    raycaster.setFromCamera(mouse, camera); const intersects = raycaster.intersectObjects(photos);
-    if (intersects.length > 0) { const object = intersects[0].object; if (focusedPhoto !== object) focusPhoto(object); } 
-    else { if (focusedPhoto) unfocusPhoto(); }
+    
+    raycaster.setFromCamera(mouse, camera); 
+    const intersects = raycaster.intersectObjects(photos);
+    
+    if (intersects.length > 0) { 
+        const object = intersects[0].object; 
+        if (focusedPhoto !== object) focusPhoto(object); 
+    } else { 
+        if (focusedPhoto) unfocusPhoto(); 
+    }
 }
 
 function focusPhoto(mesh) {
@@ -367,7 +396,7 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// 🚀 本地化读取手势模型文件，拒绝被墙
+// 本地化读取手势模型文件
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
@@ -473,7 +502,9 @@ function updatePhotos() {
             const ud = mesh.userData; let targetPos, targetRot, targetScale;
             if (ud.isFocused) {
                 const cameraDir = new THREE.Vector3(); camera.getWorldDirection(cameraDir);
-                targetPos = new THREE.Vector3().copy(camera.position).add(cameraDir.multiplyScalar(15));
+                // 移动端拉近相机的距离，防止图片显示过小
+                const focusDist = isMobile ? 12 : 15;
+                targetPos = new THREE.Vector3().copy(camera.position).add(cameraDir.multiplyScalar(focusDist));
                 mesh.lookAt(camera.position); targetRot = mesh.quaternion; targetScale = 3.5; 
             } else {
                 targetPos = ud.galleryPos.clone(); targetPos.y += Math.sin(time + i) * 0.8;
