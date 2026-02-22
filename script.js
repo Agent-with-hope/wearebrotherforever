@@ -20,8 +20,7 @@ const CONFIG = {
     
     horseImageUrl: '',
     
-    // 🟢 核心修复：彻底告别外部 CDN，回归最稳定可靠的本地相对路径！
-    // 💡 提示：如果你的图片已经压缩成了 .webp 格式，请务必把下面的 .jpg 全局替换为 .webp
+    // 完全依赖相对路径本地读取
     galleryImages: [
         "./images/IMG_20220723_151111.jpg",
         "./images/IMG_20220723_161917.jpg",
@@ -213,8 +212,9 @@ function generateFallbackHorse(resolveCallback) {
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
     const size = 400; canvas.width = size; canvas.height = size;
     
+    // 🔴 完美修复：用 &#x1F40E; (Unicode实体代码) 替代 🐎，彻底免疫保存编码导致的 Invalid token 报错
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-        <text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">🐎</text>
+        <text x="50%" y="55%" font-size="260" dominant-baseline="middle" text-anchor="middle" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">&#x1F40E;</text>
     </svg>`;
     
     const img = new Image();
@@ -288,7 +288,6 @@ function getSprite() {
 
 function createPhotos() {
     photoGroup = new THREE.Group(); 
-    // 强制 GPU 后台加载图片，消除卡顿
     photoGroup.visible = true; 
     scene.add(photoGroup);
     
@@ -314,7 +313,6 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            // 极小比例渲染在中心点，欺骗 GPU 完成静默上传
             mesh.scale.set(0.0001, 0.0001, 0.0001);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
@@ -324,11 +322,17 @@ function createPhotos() {
 }
 
 // ==========================================
-// 交互、动画与手势
+// 交互、动画与手势 (原版 click 交互)
 // ==========================================
 function setupInteraction() {
-    window.addEventListener('pointermove', (e) => { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
+    window.addEventListener('pointermove', (e) => { 
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1; 
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; 
+    });
+    
+    // 纯原版的点击事件，保留桌面端的完美点击逻辑
     window.addEventListener('click', onClick);
+    
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
     audioBtn.addEventListener('click', (e) => {
@@ -367,7 +371,7 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// 🚀 本地化读取手势模型文件，拒绝被墙
+// 采用本地相对路径读取模型
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
