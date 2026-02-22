@@ -6,12 +6,10 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 // ==========================================
-// 🔴 用户核心配置区 (已接入图片 CDN 加速)
+// 🔴 用户核心配置区 (保持图片 CDN 加速)
 // ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
-
-// 自动拼接 jsDelivr 的 Fastly 亚洲加速节点路径 (针对国内优化)
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -26,7 +24,6 @@ const CONFIG = {
     
     horseImageUrl: '',
     
-    // 🚀 图片已全部套用 CDN 加速前缀！(如果你已经把图片压缩成了 .webp，请把这里的 .jpg 改成 .webp)
     galleryImages: [
         CDN_PREFIX + "IMG_20220723_151111.jpg",
         CDN_PREFIX + "IMG_20220723_161917.jpg",
@@ -217,11 +214,13 @@ function generateFallbackHorse(resolveCallback) {
     canvas.width = size; 
     canvas.height = size;
     
-    // 🟢 采用纯 ASCII 的底层十六进制转义码 "\uD83D\uDC0E"，绝对防止 Edge 报 SyntaxError
     ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('\uD83D\uDC0E', size / 2, size / 2 + 20);
+    
+    // 🔴 终极修复：使用 JS 原生函数动态生成表情字符，代码中不出现任何特殊字符。
+    // 这将 100% 免疫各种编辑器保存编码造成的 SyntaxError 报错！
+    ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
     
     const imgData = ctx.getImageData(0, 0, size, size).data;
     const tempPoints = []; 
@@ -373,7 +372,6 @@ async function initMediaPipe() {
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, { 
         baseOptions: { 
-            // 🔴 模型文件保持本地加载，拒绝跨国延迟
             modelAssetPath: "./models/hand_landmarker.task",
             delegate: "GPU" 
         }, 
