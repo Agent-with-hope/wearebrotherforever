@@ -121,7 +121,6 @@ async function init() {
     initThree();
     initPostProcessing();
     
-    // 强制调用一次安全排版，确保画面比例完美
     onWindowResize();
     
     if(loadingText) loadingText.innerText = "正在凝聚金马粒子...";
@@ -220,9 +219,17 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
+    // 🔴 多节点双保险加载策略：告别 404
+    const fallbacks = [
+        // 1. GitHub 源码级托管 (永不删减文件)
+        "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png",
+        // 2. Cloudflare Cdnjs 权威托管 (国内偶尔抽风，备选)
+        "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png"
+    ];
+    let currentFallback = 0;
+    
     const img = new Image();
     img.crossOrigin = "Anonymous";
-    img.src = "https://fastly.jsdelivr.net/npm/twemoji@14.0.2/assets/72x72/1f40e.png";
     
     img.onload = () => {
         const canvas = document.createElement('canvas'); 
@@ -250,27 +257,37 @@ function generateFallbackHorse(resolveCallback) {
     };
 
     img.onerror = () => {
-        const canvas = document.createElement('canvas'); 
-        const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('马', size / 2, size / 2 + 20);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+        currentFallback++;
+        if (currentFallback < fallbacks.length) {
+            img.src = fallbacks[currentFallback]; // 重试下一个节点
+        } else {
+            // 🔴 终极兜底：所有节点全被墙断网，用代码写死繁体字“馬”，确保项目不死！
+            console.warn("网络受限，已切换为后备文本模型");
+            const canvas = document.createElement('canvas'); 
+            const ctx = canvas.getContext('2d');
+            const size = 400; canvas.width = size; canvas.height = size;
+            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('馬', size / 2, size / 2 + 20);
+            
+            const imgData = ctx.getImageData(0, 0, size, size).data;
+            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+            
+            for (let y = 0; y < size; y += step) {
+                for (let x = 0; x < size; x += step) {
+                    if (imgData[(y * size + x) * 4 + 3] > 50) {
+                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                         tempPoints.push(new THREE.Vector3(px, py, pz));
+                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                    }
                 }
             }
+            fillPoints(tempPoints, tempAura);
+            if (resolveCallback) resolveCallback();
         }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
     };
+    
+    // 启动首次图片加载
+    img.src = fallbacks[0];
 }
 
 function fillPoints(tempPoints, tempAura) {
@@ -470,7 +487,6 @@ function updateStatus(state) {
     else if (state === 'viewing') { statusText.innerText = "正在浏览 • 点击关闭"; gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
 }
 
-// 🔴 终极防御：如果执行时某些变量还未创建完毕，坚决不抛出错误中断程序
 function onWindowResize() { 
     if (camera && renderer) {
         camera.aspect = window.innerWidth / window.innerHeight; 
