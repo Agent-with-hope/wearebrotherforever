@@ -8,12 +8,6 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 // ==========================================
 // 🔴 用户核心配置区
 // ==========================================
-const GITHUB_USER = "Agent-with-hope"; 
-const GITHUB_REPO = "wearebrotherforever";       
-
-// 自动拼接 jsDelivr 加速节点路径
-const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
-
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
@@ -26,23 +20,25 @@ const CONFIG = {
     
     horseImageUrl: '',
     
+    // 🟢 核心修复：彻底告别外部 CDN，回归最稳定可靠的本地相对路径！
+    // 💡 提示：如果你的图片已经压缩成了 .webp 格式，请务必把下面的 .jpg 全局替换为 .webp
     galleryImages: [
-        CDN_PREFIX + "IMG_20220723_151111.jpg",
-        CDN_PREFIX + "IMG_20220723_161917.jpg",
-        CDN_PREFIX + "IMG_20220723_170924.jpg",
-        CDN_PREFIX + "IMG_20220723_174018.jpg",
-        CDN_PREFIX + "IMG_20220723_184904.jpg",
-        CDN_PREFIX + "IMG_20220724_151129.jpg",
-        CDN_PREFIX + "IMG_20220724_151404.jpg",
-        CDN_PREFIX + "IMG_20220724_152254.jpg",
-        CDN_PREFIX + "IMG_20220724_153041.jpg",
-        CDN_PREFIX + "IMG_20220724_154313.jpg",
-        CDN_PREFIX + "IMG_20220724_154745.jpg",
-        CDN_PREFIX + "IMG_20220724_154904.jpg",
-        CDN_PREFIX + "IMG_20220725_150737.jpg",
-        CDN_PREFIX + "IMG_20220725_152033.jpg",
-        CDN_PREFIX + "IMG_20220725_153234.jpg",
-        CDN_PREFIX + "IMG_20220725_163419.jpg"
+        "./images/IMG_20220723_151111.jpg",
+        "./images/IMG_20220723_161917.jpg",
+        "./images/IMG_20220723_170924.jpg",
+        "./images/IMG_20220723_174018.jpg",
+        "./images/IMG_20220723_184904.jpg",
+        "./images/IMG_20220724_151129.jpg",
+        "./images/IMG_20220724_151404.jpg",
+        "./images/IMG_20220724_152254.jpg",
+        "./images/IMG_20220724_153041.jpg",
+        "./images/IMG_20220724_154313.jpg",
+        "./images/IMG_20220724_154745.jpg",
+        "./images/IMG_20220724_154904.jpg",
+        "./images/IMG_20220725_150737.jpg",
+        "./images/IMG_20220725_152033.jpg",
+        "./images/IMG_20220725_153234.jpg",
+        "./images/IMG_20220725_163419.jpg"
     ] 
 };
 
@@ -292,6 +288,7 @@ function getSprite() {
 
 function createPhotos() {
     photoGroup = new THREE.Group(); 
+    // 强制 GPU 后台加载图片，消除卡顿
     photoGroup.visible = true; 
     scene.add(photoGroup);
     
@@ -317,6 +314,7 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
+            // 极小比例渲染在中心点，欺骗 GPU 完成静默上传
             mesh.scale.set(0.0001, 0.0001, 0.0001);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
@@ -369,13 +367,12 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// 🚀 核心提速优化：本地化加载模型
+// 🚀 本地化读取手势模型文件，拒绝被墙
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, { 
         baseOptions: { 
-            // 🔴 完美修复：直接读取你刚刚上传到 GitHub 里的相对路径本地文件
             modelAssetPath: "./models/hand_landmarker.task",
             delegate: "GPU" 
         }, 
