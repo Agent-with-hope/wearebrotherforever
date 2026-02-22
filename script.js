@@ -12,12 +12,12 @@ const GITHUB_USER = "Agent-with-hope";
 const GITHUB_REPO = "wearebrotherforever";       
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
 
-// 🔴 极速优化：设置四大高速代理节点，我们将让它们“赛跑”下载模型
+// 🔴 极速且干净的竞速节点：全部采用 JSDelivr 官方旗下的不同底层网络，杜绝野鸡节点报错
 const MODEL_PROXIES = [
-    `https://mirror.ghproxy.com/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
-    `https://ghproxy.net/https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
-    `https://raw.gitmirror.com/${GITHUB_USER}/${GITHUB_REPO}/main/models/hand_landmarker.task`,
-    `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
+    `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
+    `https://gcore.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
+    `https://testingcf.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`,
+    `https://cdn.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/models/hand_landmarker.task`
 ];
 
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -123,26 +123,23 @@ async function init() {
         // 放宽到 30 秒熔断，给予网络并发请求绝对充足的时间去“赛跑”
         await initMediaPipeWithTimeout(30000); 
     } catch (e) {
-        console.warn("所有节点超时或无摄像头，切换至次位手段", e);
+        console.warn("手势引擎加载受阻或超时，已作为次位手段平滑降级至手动模式", e);
         fallbackToManual("手势网络受阻或未授权，已切换手动模式");
     }
     
     animate();
 }
 
-// 🔴 核心极速下载引擎：多节点并发竞速 (Promise Racing)
+// 核心极速下载引擎：多节点并发竞速 (Promise Racing)
 async function fetchModelWithRace() {
-    // 同时向所有配置的国内镜像源发起请求
     const fetchPromises = MODEL_PROXIES.map(url => 
         fetch(url, { cache: "force-cache" }).then(res => {
-            if (!res.ok) throw new Error(`节点加载失败: ${url}`);
+            if (!res.ok) throw new Error(`节点响应失败: ${url}`);
             return res.blob();
         })
     );
-    // Promise.any 魔法：只要其中【任意一个】节点最先下载完成，立刻返回并抛弃其他慢速节点的请求！
+    // 只要一个节点成功，立即返回该节点的数据
     const fastestBlob = await Promise.any(fetchPromises);
-    
-    // 将高速下载的 Blob 数据转化为纯本地直连的 URL (这解决了 MediaPipe 只认 URL 路径的问题)
     return URL.createObjectURL(fastestBlob);
 }
 
@@ -151,7 +148,7 @@ async function initMediaPipeWithTimeout(timeoutMs) {
         try {
             const vision = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm");
             
-            if(statusText) statusText.innerText = "竞速拉取视觉神经...";
+            if(statusText) statusText.innerText = "获取视觉引擎...";
             // 使用竞速函数获取本地零延迟加载路径
             const localFastModelUrl = await fetchModelWithRace();
 
@@ -287,9 +284,15 @@ function processImageToPoints(img) {
 }
 
 function generateFallbackHorse(resolveCallback) {
+    const fallbacks = [
+        // 🔴 解决 404 与 CORS：使用专门的静态库 cdnjs 和 jsDelivr 核心源
+        "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f40e.png",
+        "https://fastly.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f40e.png"
+    ];
+    let currentFallback = 0;
+    
     const img = new Image();
     img.crossOrigin = "Anonymous";
-    img.src = "https://unpkg.com/twemoji@14.0.2/assets/72x72/1f40e.png";
     
     img.onload = () => {
         const canvas = document.createElement('canvas'); 
@@ -317,25 +320,31 @@ function generateFallbackHorse(resolveCallback) {
     };
 
     img.onerror = () => {
-        const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-        const size = 400; canvas.width = size; canvas.height = size;
-        ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('馬', size / 2, size / 2 + 20);
-        
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
-        for (let y = 0; y < size; y += step) {
-            for (let x = 0; x < size; x += step) {
-                if (imgData[(y * size + x) * 4 + 3] > 50) {
-                     const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
-                     tempPoints.push(new THREE.Vector3(px, py, pz));
-                     if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+        currentFallback++;
+        if (currentFallback < fallbacks.length) {
+            img.src = fallbacks[currentFallback];
+        } else {
+            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+            const size = 400; canvas.width = size; canvas.height = size;
+            ctx.font = 'bold 280px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('馬', size / 2, size / 2 + 20);
+            
+            const imgData = ctx.getImageData(0, 0, size, size).data;
+            const tempPoints = []; const tempAura = []; const step = isMobile ? 3 : 2;
+            for (let y = 0; y < size; y += step) {
+                for (let x = 0; x < size; x += step) {
+                    if (imgData[(y * size + x) * 4 + 3] > 50) {
+                         const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale; const pz = (Math.random() - 0.5) * 6;
+                         tempPoints.push(new THREE.Vector3(px, py, pz));
+                         if(Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
+                    }
                 }
             }
+            fillPoints(tempPoints, tempAura);
+            if (resolveCallback) resolveCallback();
         }
-        fillPoints(tempPoints, tempAura);
-        if (resolveCallback) resolveCallback();
     };
+    img.src = fallbacks[0];
 }
 
 function fillPoints(tempPoints, tempAura) {
