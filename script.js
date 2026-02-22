@@ -325,16 +325,16 @@ function createPhotos() {
     }
 }
 
-// ==========================================
+
 // 交互、动画与手势
-// ==========================================
+
 function setupInteraction() {
     window.addEventListener('pointermove', (e) => { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
     window.addEventListener('click', onClick);
     closeBtn。addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
     audioBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); const isMuted = synth.toggleMute();
+        e。stopPropagation(); const isMuted = synth.toggleMute();
         if (!isMuted) { audioBtn.innerText = "🔊 音效已开"; audioBtn.classList.add('active'); if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); } 
         else { audioBtn.innerText = "🔇 音效已关"; audioBtn.classList.remove('active'); }
     });
@@ -369,13 +369,12 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// 🚀 核心提速优化：本地化加载模型
+// 本地化加载模型
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, { 
         baseOptions: { 
-            // 🔴 完美修复：直接读取你刚刚上传到 GitHub 里的相对路径本地文件
             modelAssetPath: "./models/hand_landmarker.task",
             delegate: "GPU" 
         }, 
@@ -388,12 +387,12 @@ async function initMediaPipe() {
 function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).键，然后((stream) => {
             webcam.srcObject = stream;
             
-            webcam.addEventListener('loadeddata', () => { 
+            webcam。addEventListener('loadeddata', () => { 
                 if (handLandmarker) {
-                    handLandmarker.detectForVideo(webcam, performance.now());
+                    handLandmarker.detectForVideo(webcam, performance.当前());
                 }
                 
                 loadingScreen.style.opacity = 0; 
@@ -417,7 +416,7 @@ function updateStatus(state) {
 function animate() {
     requestAnimationFrame(animate); time += 0.01;
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
-    if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
+    if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.当前()));
     updateParticles(); updatePhotos();
     controls.autoRotate = !focusedPhoto; controls.update(); composer.render();
 }
@@ -487,7 +486,7 @@ function updatePhotos() {
         });
     } else {
         photos.forEach(mesh => { 
-            mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
+            mesh。position.lerp(new THREE.Vector3(0,0,0), 0.1); 
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.0001, 0.1); 
             mesh.scale.set(newScale, newScale, newScale); 
         });
@@ -496,9 +495,9 @@ function updatePhotos() {
 
 function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
-// ==========================================
+
 // AI 金融顾问功能 (接入后端安全代理)
-// ==========================================
+
 function setupAI() {
     aiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -568,7 +567,7 @@ function addMessageToChat(content, className, id = null, isHTML = false) {
     if (isHTML) {
         msgDiv.innerHTML = content;
     } else {
-        msgDiv.textContent = content;
+        msgDiv。textContent = content;
     }
 
     chatMessages.appendChild(msgDiv);
