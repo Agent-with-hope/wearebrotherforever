@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -5,6 +6,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
+// ==========================================
+// 🔴 用户核心配置区 (保持图片 CDN 加速)
+// ==========================================
 const GITHUB_USER = "Agent-with-hope"; 
 const GITHUB_REPO = "wearebrotherforever";       
 const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
@@ -12,13 +16,15 @@ const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
-    particleCount: isMobile ? 5000 : 15000, 
+    particleCount: isMobile ? 6000 : 15000, 
     horseScale: 0.14, 
     photoCount: 30, 
-    bloomStrength: isMobile ? 1.2 : 2.2, 
+    bloomStrength: isMobile ? 1.5 : 2.2, 
     bloomRadius: 0.6,
     bloomThreshold: 0,
+    
     horseImageUrl: '',
+    
     galleryImages: [
         CDN_PREFIX + "IMG_20220723_151111.jpg",
         CDN_PREFIX + "IMG_20220723_161917.jpg",
@@ -39,6 +45,9 @@ const CONFIG = {
     ] 
 };
 
+// ==========================================
+// 音效系统
+// ==========================================
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
     init() { 
@@ -75,6 +84,9 @@ class EtherealSynth {
     }
 }
 
+// ==========================================
+// 全局变量与 DOM
+// ==========================================
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
 let targetBloomStrength = CONFIG.bloomStrength; 
@@ -139,9 +151,11 @@ function initThree() {
     camera.position.set(0, 0, 45);
     
     renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1 : 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85; 
+    
     container.appendChild(renderer.domElement);
     
     controls = new OrbitControls(camera, renderer.domElement);
@@ -149,9 +163,6 @@ function initThree() {
     controls.addEventListener('start', () => isUserInteracting = true);
     controls.addEventListener('end', () => isUserInteracting = false);
     window.addEventListener('resize', onWindowResize);
-    
-    // 🔴 修复马匹变形：强制初始化时立刻同步物理视口比例，杜绝宽屏压缩
-    onWindowResize();
 }
 
 function initPostProcessing() {
@@ -207,6 +218,9 @@ function generateFallbackHorse(resolveCallback) {
     ctx.font = 'bold 260px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    
+    // 🔴 终极修复：使用 JS 原生函数动态生成表情字符，代码中不出现任何特殊字符。
+    // 这将 100% 免疫各种编辑器保存编码造成的 SyntaxError 报错！
     ctx.fillText(String.fromCodePoint(0x1F40E), size / 2, size / 2 + 20);
     
     const imgData = ctx.getImageData(0, 0, size, size).data;
@@ -300,8 +314,7 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
-            // 🔴 修复照片消失：将隐身缩放基数从容易崩溃的 0.0001 提升到安全的 0.01
-            mesh.scale.set(0.01, 0.01, 0.01);
+            mesh.scale.set(0.0001, 0.0001, 0.0001);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
             mesh.lookAt(0, 0, 0); mesh.userData.galleryRot = mesh.rotation.clone(); photoGroup.add(mesh); photos.push(mesh);
@@ -310,27 +323,12 @@ function createPhotos() {
 }
 
 function setupInteraction() {
-    // 兼容所有设备：用统一的指针防抖逻辑代替原版容易冲突的 click
-    let startX = 0, startY = 0;
-    window.addEventListener('pointerdown', (e) => {
-        startX = e.clientX; startY = e.clientY;
-    });
-
-    window.addEventListener('pointerup', (e) => {
-        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
-        if (dist < 10) { 
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            onClick();
-        }
-    });
-
     window.addEventListener('pointermove', (e) => { 
-        if(!isMobile) {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1; 
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; 
-        }
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1; 
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; 
     });
+    
+    window.addEventListener('click', onClick);
     
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
@@ -469,15 +467,13 @@ function updateParticles() {
 }
 
 function updatePhotos() {
-    // 🔴 修复照片消失：智能显隐机制。只有在照片足够小的情况下才关闭渲染，防止 WebGL 矩阵报错
     if (appState === 'EXPLODING' || appState === 'GALLERY') {
         photoGroup.visible = true;
         photos.forEach((mesh, i) => {
             const ud = mesh.userData; let targetPos, targetRot, targetScale;
             if (ud.isFocused) {
                 const cameraDir = new THREE.Vector3(); camera.getWorldDirection(cameraDir);
-                const focusDist = isMobile ? 12 : 15;
-                targetPos = new THREE.Vector3().copy(camera.position).add(cameraDir.multiplyScalar(focusDist));
+                targetPos = new THREE.Vector3().copy(camera.position).add(cameraDir.multiplyScalar(15));
                 mesh.lookAt(camera.position); targetRot = mesh.quaternion; targetScale = 3.5; 
             } else {
                 targetPos = ud.galleryPos.clone(); targetPos.y += Math.sin(time + i) * 0.8;
@@ -487,24 +483,15 @@ function updatePhotos() {
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1); mesh.scale.set(newScale, newScale, newScale);
         });
     } else {
-        let allHidden = true;
         photos.forEach(mesh => { 
             mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
-            // 采用 0.01 的安全底部缩放值，防止笔记本集成显卡将其截断为 0 引起引擎崩溃
-            const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.01, 0.1); 
+            const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.0001, 0.1); 
             mesh.scale.set(newScale, newScale, newScale); 
-            if (newScale > 0.015) allHidden = false;
         });
-        if (allHidden) photoGroup.visible = false;
     }
 }
 
-function onWindowResize() { 
-    camera.aspect = window.innerWidth / window.innerHeight; 
-    camera.updateProjectionMatrix(); 
-    renderer.setSize(window.innerWidth, window.innerHeight); 
-    composer.setSize(window.innerWidth, window.innerHeight); 
-}
+function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
 // ==========================================
 // AI 金融顾问功能 (接入后端安全代理)
