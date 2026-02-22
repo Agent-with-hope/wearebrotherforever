@@ -2,32 +2,30 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>哥哥，新年快乐</title>
     <link rel="stylesheet" href="style.css">
-    
-    <script src="https://npm.elemecdn.com/marked@4.3.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
-    <div id="loading-ui">
-        <div id="loading-ui-content">
-            <div id="loading-percent">0%</div>
-            <div id="loading-bar-container">
-                <div id="loading-bar"></div>
-            </div>
-            <div id="loading-text">正在汇聚满天星辰...</div>
-        </div>
+    <div id="loading-screen">
+        <div class="loader"></div>
+        <div id="loading-text" style="color:#ffcc00; font-family: monospace;">LOADING FESTIVE SPIRIT...</div>
     </div>
 
     <div id="video-wrapper">
-        <video id="webcam" autoplay playsinline webkit-playsinline muted style="display:none;"></video>
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="gesture-guide">
+            <div class="guide-icon"></div>
+            <div class="guide-text">握拳召唤 · 开掌绽放</div>
+        </div>
     </div>
 
     <div id="top-hud">
         <div id="status-pill" class="status-pill">
             <span id="gesture-icon" class="icon-gesture">✊</span>
-            <span id="status-text">初始化中...</span>
+            <span id="status-text">握拳 • 召唤金马</span>
             <div id="detect-indicator" class="detect-indicator" title="指示灯"></div>
         </div>
     </div>
@@ -65,13 +63,13 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://npm.elemecdn.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://npm.elemecdn.com/three@0.160.0/examples/jsm/",
-                "@mediapipe/tasks-vision": "https://npm.elemecdn.com/@mediapipe/tasks-vision@0.10.3/+esm"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm"
             }
         }
     </script>
-    <script async src="https://npm.elemecdn.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-    <script type="module" src="./script.js"></script>
+
+    <script type="module" src="script.js"></script>
 </body>
 </html>
