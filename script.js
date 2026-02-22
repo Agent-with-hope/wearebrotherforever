@@ -5,15 +5,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-
-// 用户核心配置区
-
-const GITHUB_USER = "Agent-with-hope"; 
-const GITHUB_REPO = "wearebrotherforever";       
-
-// 自动拼接 jsDelivr 加速节点路径
-const CDN_PREFIX = `https://fastly.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@main/images/`;
-
+// ==========================================
+// 🔴 用户核心配置区
+// ==========================================
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const CONFIG = {
@@ -26,29 +20,31 @@ const CONFIG = {
     
     horseImageUrl: '',
     
+    // 🟢 核心修复：彻底告别外部 CDN，回归最稳定可靠的本地相对路径！
+    // 💡 提示：如果你的图片已经压缩成了 .webp 格式，请务必把下面的 .jpg 全局替换为 .webp
     galleryImages: [
-        CDN_PREFIX + "IMG_20220723_151111.jpg",
-        CDN_PREFIX + "IMG_20220723_161917.jpg",
-        CDN_PREFIX + "IMG_20220723_170924.jpg",
-        CDN_PREFIX + "IMG_20220723_174018.jpg",
-        CDN_PREFIX + "IMG_20220723_184904.jpg",
-        CDN_PREFIX + "IMG_20220724_151129.jpg",
-        CDN_PREFIX + "IMG_20220724_151404.jpg",
-        CDN_PREFIX + "IMG_20220724_152254.jpg",
-        CDN_PREFIX + "IMG_20220724_153041.jpg",
-        CDN_PREFIX + "IMG_20220724_154313.jpg",
-        CDN_PREFIX + "IMG_20220724_154745.jpg",
-        CDN_PREFIX + "IMG_20220724_154904.jpg",
-        CDN_PREFIX + "IMG_20220725_150737.jpg",
-        CDN_PREFIX + "IMG_20220725_152033.jpg",
-        CDN_PREFIX + "IMG_20220725_153234.jpg",
-        CDN_PREFIX + "IMG_20220725_163419.jpg"
+        "./images/IMG_20220723_151111.jpg",
+        "./images/IMG_20220723_161917.jpg",
+        "./images/IMG_20220723_170924.jpg",
+        "./images/IMG_20220723_174018.jpg",
+        "./images/IMG_20220723_184904.jpg",
+        "./images/IMG_20220724_151129.jpg",
+        "./images/IMG_20220724_151404.jpg",
+        "./images/IMG_20220724_152254.jpg",
+        "./images/IMG_20220724_153041.jpg",
+        "./images/IMG_20220724_154313.jpg",
+        "./images/IMG_20220724_154745.jpg",
+        "./images/IMG_20220724_154904.jpg",
+        "./images/IMG_20220725_150737.jpg",
+        "./images/IMG_20220725_152033.jpg",
+        "./images/IMG_20220725_153234.jpg",
+        "./images/IMG_20220725_163419.jpg"
     ] 
 };
 
-
+// ==========================================
 // 音效系统
-
+// ==========================================
 class EtherealSynth {
     constructor() { this.ctx = null; this.isMuted = true; }
     init() { 
@@ -85,9 +81,9 @@ class EtherealSynth {
     }
 }
 
-
+// ==========================================
 // 全局变量与 DOM
-
+// ==========================================
 let scene, camera, renderer, composer, controls;
 let bloomPass, particles, particleMaterial, photoGroup, handLandmarker, webcam;
 let targetBloomStrength = CONFIG.bloomStrength; 
@@ -119,9 +115,9 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
-
+// ==========================================
 // 初始化与 3D 逻辑
-
+// ==========================================
 async function init() {
     initThree();
     initPostProcessing();
@@ -205,7 +201,7 @@ function processImageToPoints(img) {
                 const px = (x - size / 2) * CONFIG.horseScale; const py = -(y - size / 2) * CONFIG.horseScale;
                 const distFromCenterY = Math.abs(y - size/2) / (size/2); const thickness = Math.cos(distFromCenterY * Math.PI / 2) * 8 + 2; 
                 const pz = (Math.random() - 0.5) * thickness; 
-                tempPoints。push(new THREE.Vector3(px, py, pz));
+                tempPoints.push(new THREE.Vector3(px, py, pz));
                 if (Math.random() > 0.90) tempAura.push(new THREE.Vector3(px, py, pz));
             }
         }
@@ -286,14 +282,15 @@ function createParticles() {
 function getSprite() {
     const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32; const ctx = canvas.getContext('2d');
     const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad。addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, 'rgba(255,200,150,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, 'rgba(255,200,150,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(canvas);
 }
 
 function createPhotos() {
     photoGroup = new THREE.Group(); 
+    // 强制 GPU 后台加载图片，消除卡顿
     photoGroup.visible = true; 
-    scene。add(photoGroup);
+    scene.add(photoGroup);
     
     const loader = new THREE.TextureLoader(); loader.setCrossOrigin('anonymous'); const phi = Math.PI * (3 - Math.sqrt(5)); 
     
@@ -307,8 +304,8 @@ function createPhotos() {
             imgUrl = CONFIG.galleryImages[i % CONFIG.galleryImages.length];
         }
 
-        loader。load(imgUrl, (tex) => {
-            tex。colorSpace = THREE.SRGBColorSpace; 
+        loader.load(imgUrl, (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace; 
             const photoMaterial = new THREE.MeshBasicMaterial({ 
                 map: tex, 
                 side: THREE.DoubleSide, 
@@ -317,6 +314,7 @@ function createPhotos() {
             });
 
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 5), photoMaterial);
+            // 极小比例渲染在中心点，欺骗 GPU 完成静默上传
             mesh.scale.set(0.0001, 0.0001, 0.0001);
             
             mesh.userData = { id: i, galleryPos: new THREE.Vector3(tx, ty, tz), galleryRot: new THREE.Euler(0, 0, 0), isFocused: false };
@@ -325,16 +323,16 @@ function createPhotos() {
     }
 }
 
-
+// ==========================================
 // 交互、动画与手势
-
+// ==========================================
 function setupInteraction() {
     window.addEventListener('pointermove', (e) => { mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
     window.addEventListener('click', onClick);
-    closeBtn。addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); unfocusPhoto(); });
     manualBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleManualState(); });
     audioBtn.addEventListener('click', (e) => {
-        e。stopPropagation(); const isMuted = synth.toggleMute();
+        e.stopPropagation(); const isMuted = synth.toggleMute();
         if (!isMuted) { audioBtn.innerText = "🔊 音效已开"; audioBtn.classList.add('active'); if(synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); } 
         else { audioBtn.innerText = "🔇 音效已关"; audioBtn.classList.remove('active'); }
     });
@@ -369,7 +367,7 @@ function unfocusPhoto() {
     dimmerEl.style.background = 'rgba(0,0,0,0)'; updateStatus("palm"); closeBtn.classList.remove('visible'); targetBloomStrength = CONFIG.bloomStrength;
 }
 
-// 本地化加载模型
+// 🚀 本地化读取手势模型文件，拒绝被墙
 async function initMediaPipe() {
     const vision = await FilesetResolver.forVisionTasks("https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
     
@@ -387,12 +385,12 @@ async function initMediaPipe() {
 function startWebcam() {
     return new Promise((resolve, reject) => {
         webcam = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).键，然后((stream) => {
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } }).then((stream) => {
             webcam.srcObject = stream;
             
-            webcam。addEventListener('loadeddata', () => { 
+            webcam.addEventListener('loadeddata', () => { 
                 if (handLandmarker) {
-                    handLandmarker.detectForVideo(webcam, performance.当前());
+                    handLandmarker.detectForVideo(webcam, performance.now());
                 }
                 
                 loadingScreen.style.opacity = 0; 
@@ -408,15 +406,15 @@ function startWebcam() {
 function updateStatus(state) {
     statusPill.classList.remove('active');
     if (state === 'scattered') { statusText.innerText = "握拳 ✊ 召唤金马"; gestureIcon.innerText = "✊"; statusPill.style.borderColor = "rgba(255, 69, 0, 0.3)"; } 
-    else if (state === 'fist') { statusText.innerText = "展开手掌 • 展望未来"; gestureIcon.innerText = "🌌"; statusPill.classList.add('active'); } 
+    else if (state === 'fist') { statusText.innerText = "金马奔腾 • 蓄势待发"; gestureIcon.innerText = "🐎"; statusPill.classList.add('active'); } 
     else if (state === 'palm') { statusText.innerText = "繁花似锦 • 岁岁平安"; gestureIcon.innerText = "🌸"; statusPill.classList.add('active'); statusPill.style.borderColor = "#ff4400"; } 
-    else if (state === 'viewing') { statusText.innerText = "握紧拳头 • 掌握财富"; gestureIcon.innerText = "💰"; statusPill.classList.remove('active'); }
+    else if (state === 'viewing') { statusText.innerText = "正在浏览 • 点击关闭"; gestureIcon.innerText = "🖼️"; statusPill.classList.remove('active'); }
 }
 
 function animate() {
     requestAnimationFrame(animate); time += 0.01;
     if (bloomPass) bloomPass.strength += (targetBloomStrength - bloomPass.strength) * 0.05;
-    if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.当前()));
+    if (!manualMode && handLandmarker && webcam && webcam.readyState === 4) handleGesture(handLandmarker.detectForVideo(webcam, performance.now()));
     updateParticles(); updatePhotos();
     controls.autoRotate = !focusedPhoto; controls.update(); composer.render();
 }
@@ -486,7 +484,7 @@ function updatePhotos() {
         });
     } else {
         photos.forEach(mesh => { 
-            mesh。position.lerp(new THREE.Vector3(0,0,0), 0.1); 
+            mesh.position.lerp(new THREE.Vector3(0,0,0), 0.1); 
             const newScale = THREE.MathUtils.lerp(mesh.scale.x, 0.0001, 0.1); 
             mesh.scale.set(newScale, newScale, newScale); 
         });
@@ -495,9 +493,9 @@ function updatePhotos() {
 
 function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); }
 
-
+// ==========================================
 // AI 金融顾问功能 (接入后端安全代理)
-
+// ==========================================
 function setupAI() {
     aiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -538,7 +536,7 @@ async function callZhipuAI(prompt) {
 
     } catch (error) {
         console.error("Local API Error:", error);
-        return "抱歉，财神爷的信号不太好，请稍后再试！";
+        return "抱歉，财神爷的信号不太好（安全代理请求失败），请稍后再试！";
     }
 }
 
@@ -567,7 +565,7 @@ function addMessageToChat(content, className, id = null, isHTML = false) {
     if (isHTML) {
         msgDiv.innerHTML = content;
     } else {
-        msgDiv。textContent = content;
+        msgDiv.textContent = content;
     }
 
     chatMessages.appendChild(msgDiv);
